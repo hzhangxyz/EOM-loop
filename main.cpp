@@ -15,7 +15,7 @@ void mv(int n, const complex *A, const complex *x, complex *y) {
   for (auto i = 0; i < n; i++) {
     y[i] = 0;
     for (auto j = 0; j < n; j++) {
-      y[i] += A[i * n + j] * x[j];
+      y[i] += A[j * n + i] * x[j];
     }
   }
 }
@@ -129,12 +129,29 @@ struct U_matrix {
     return (*m)[offset];
   }
 
+  void norm_column(int a, int b) {
+    double square_sum = 0;
+    for (auto i = 0; i < n; i++) {
+      for (auto j = 0; j < n; j++) {
+        auto this_element = get_element(a, b, i, j);
+        square_sum += std::norm(this_element);
+      }
+    }
+    auto parameter = std::sqrt(square_sum);
+    for (auto i = 0; i < n; i++) {
+      for (auto j = 0; j < n; j++) {
+        get_element(a, b, i, j) /= parameter;
+      }
+    }
+  }
+
   void generate_00() {
     for (auto i = 0; i < n; i++) {
       get_element(0, 0, i, i) =
-          std::pow(-std::exp(-1i * phi) * std::tanh(r / 2.), n) /
+          std::pow(-std::exp(-1i * phi) * std::tanh(r / 2.), i) /
           std::cosh(r / 2.);
     }
+    norm_column(0, 0);
   }
 
   void generate_other() {
@@ -142,11 +159,13 @@ struct U_matrix {
     for (auto i = 1; i < n; i++) {
       mv(n * n, adding_2.data(), &get_element(0, i - 1, 0, 0),
          &get_element(0, i, 0, 0));
+      norm_column(0, i);
     }
     for (auto j = 1; j < n; j++) {
       for (auto i = 0; i < n; i++) {
         mv(n * n, adding_1.data(), &get_element(j - 1, i, 0, 0),
            &get_element(j, i, 0, 0));
+        norm_column(j, i);
       }
     }
   }
@@ -172,6 +191,14 @@ auto get_U_tensor(int n, double r, double omega, double phi, double psi) {
   auto result = TAT::Tensor<complex>({"I1", "I2", "O1", "O2"}, {n, n, n, n});
   auto U = U_matrix();
   U.generate_all(n, r, omega, phi, psi);
+#if 0
+  std::cout << "U matrix is\n";
+  U.show_matrix(&U.matrix);
+  std::cout << "adding 1 matrix is\n";
+  U.show_matrix(&U.adding_1);
+  std::cout << "adding 2 matrix is\n";
+  U.show_matrix(&U.adding_2);
+#endif
   result.block() = U.matrix;
   return result;
 }
