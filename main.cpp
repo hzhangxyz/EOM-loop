@@ -278,39 +278,71 @@ complex contract_mps(int l, const TAT::Tensor<complex> &a,
 }
 
 extern "C" void check(int l, int n, double r, double omega, double phi,
-                      double psi, double delta, bool delta_phi) {
+                      double psi, double delta, int delta_which) {
   auto U = get_U_tensor(n, r, omega, phi, psi);
+#if 0
   std::cout << "U is " << U << "\n";
+#endif
   auto S = get_site({1}, {U});
   std::vector<double> p;
   std::vector<TAT::Tensor<complex>> Us;
-  for (auto i = -5; i <= +5; i++) {
-    p.push_back(11);
-    if (delta_phi) {
-      Us.push_back(get_U_tensor(n, r, omega, phi + i * delta / 5, psi));
-    } else {
-      Us.push_back(get_U_tensor(n, r, omega, phi, psi + i * delta / 5));
+  int sample = 5;
+  for (auto i = -sample; i <= +sample; i++) {
+    p.push_back(1. / (sample * 2 + 1));
+    switch (delta_which) {
+    case 0:
+      Us.push_back(
+          get_U_tensor(n, r * (1 + i * delta / sample), omega, phi, psi));
+      break;
+    case 1:
+      Us.push_back(
+          get_U_tensor(n, r, omega * (1 + i * delta / sample), phi, psi));
+      break;
+    case 2:
+      Us.push_back(
+          get_U_tensor(n, r, omega, phi * (1 + i * delta / sample), psi));
+      break;
+    case 3:
+      Us.push_back(
+          get_U_tensor(n, r, omega, phi, psi * (1 + i * delta / sample)));
+      break;
+    default:
+      std::cerr << "Wrong delta which\n";
+      exit(-1);
     }
   }
   auto Ss = get_site(p, Us);
+#if 0
+  std::cout << "UU is " << S << "\n";
+  std::cout << "UpU is " << Ss << "\n";
+#endif
   S /= S.norm<-1>();
   Ss /= Ss.norm<-1>();
-  auto f = contract_mps(l, S, Ss) / (trace_mps(l, S) * trace_mps(l, Ss));
+  auto tracerhorhos = contract_mps(l, S, Ss);
+  auto tracerho = trace_mps(l, S);
+  auto tracerhos = trace_mps(l, Ss);
+#if 0
+  std::cout << "tr(rho rho') is " << tracerhorhos << "\n";
+  std::cout << "tr(rho) is " << tracerho << "\n";
+  std::cout << "tr(rho') is " << tracerhos << "\n";
+#endif
+  auto f = tracerhorhos / (tracerho * tracerhos);
   std::cout << "Fidelity is " << f.real() << "\n";
 }
 
 #include <fire.hpp>
 
-int fired_main(int l = fire::arg({"-L", "system loop number"}),
-               int n = fire::arg({"-N", "particle number cutoff"}),
-               double r = fire::arg({"--r-value"}),
-               double omega = fire::arg({"--omega"}),
-               double phi = fire::arg({"--phi"}),
-               double psi = fire::arg({"--psi"}),
-               double delta = fire::arg({"--delta"}),
-               int delta_phi = fire::arg(
-                   {"-d", "check which parameter, 1 for phi, 0 for psi"}, 0)) {
-  check(l, n, r, omega, phi, psi, delta, delta_phi);
+int fired_main(
+    int l = fire::arg({"-L", "system loop number"}),
+    int n = fire::arg({"-N", "particle number cutoff"}),
+    double r = fire::arg({"--r-value"}), double omega = fire::arg({"--omega"}),
+    double phi = fire::arg({"--phi"}), double psi = fire::arg({"--psi"}),
+    double delta = fire::arg({"--delta"}),
+    int delta_which = fire::arg(
+        {"-w",
+         "check which parameter, 0 for r, 1 for omega, 2 for phi, 3 for psi"},
+        0)) {
+  check(l, n, r, omega, phi, psi, delta, delta_which);
   return 0;
 }
 
