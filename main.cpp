@@ -327,21 +327,23 @@ extern "C" void check(int l, int n, double r, double omega, double phi,
   std::cout << "tr(rho') is " << tracerhos << "\n";
 #endif
   auto f = tracerhorhos / (tracerho * tracerhos);
-  std::cout << "Fidelity is " << f.real() << "\n";
+  std::cout << "Fidelity is " << std::setprecision(20) << f.real() << "\n";
 }
 
 #include <fire.hpp>
 
 int fired_main(
-    int l = fire::arg({"-L", "system loop number"}),
-    int n = fire::arg({"-N", "particle number cutoff"}),
-    double r = fire::arg({"--r-value"}), double omega = fire::arg({"--omega"}),
-    double phi = fire::arg({"--phi"}), double psi = fire::arg({"--psi"}),
-    double delta = fire::arg({"--delta"}),
-    int delta_which = fire::arg(
-        {"-w",
-         "check which parameter, 0 for r, 1 for omega, 2 for phi, 3 for psi"},
-        0)) {
+    int l = fire::arg({"-L", "--loop", "system loop number"}),
+    int n = fire::arg({"-N", "--n-cut", "particle number cutoff"}),
+    double r = fire::arg({"-R", "--r-value"}),
+    double omega = fire::arg({"-O", "--omega"}),
+    double phi = fire::arg({"-H", "--phi"}),
+    double psi = fire::arg({"-S", "--psi"}),
+    double delta = fire::arg({"-D", "--delta",
+                              "relative error of specified parameter"}),
+    int delta_which = fire::arg({"-W", "--which",
+                                 "check which parameter, 0 for r, 1 for "
+                                 "omega, 2 for phi, 3 for psi"})) {
   check(l, n, r, omega, phi, psi, delta, delta_which);
   return 0;
 }
