@@ -33,8 +33,9 @@ void mv(int n, const complex* A, const complex* x, complex* y) {
    }
 }
 
-struct U_matrix {
-   int n; // 截断
+struct matrix_U {
+   int n; // 矩阵截断
+   int c; // 物理截断
    std::vector<complex> matrix;
    std::vector<complex> adding_1;
    std::vector<complex> adding_2;
@@ -52,6 +53,18 @@ struct U_matrix {
    complex tau2;
    complex mu2;
    complex nu2;
+
+   matrix_U(int _n, int _c, double _r, double _omega, double _phi, double _psi) : n(_n), c(_c), r(_r), omega(_omega), phi(_phi), psi(_psi) {
+      generate_parameter();
+
+      matrix.resize(n * n * n * n);
+      adding_1.resize(n * n * n * n);
+      adding_2.resize(n * n * n * n);
+
+      generate_00();
+      generate_adding();
+      generate_other();
+   }
 
    void generate_parameter() {
       using namespace std;
@@ -71,15 +84,15 @@ struct U_matrix {
       std::vector<complex> a_1(n * n * n * n);
       std::vector<complex> a_2(n * n * n * n);
       // a_1_dagger
-      for (auto p2 = 0; p2 < n; p2++) {
-         for (auto i1 = 0; i1 < n - 1; i1++) {
+      for (auto p2 = 0; p2 < c; p2++) {
+         for (auto i1 = 0; i1 < c - 1; i1++) {
             auto o1 = i1 + 1;
             get_element(o1, p2, i1, p2, &a_1) = get_element(i1, p2, o1, p2, &a_1_dagger) = std::sqrt(o1);
          }
       }
       // a_2_dagger
-      for (auto p1 = 0; p1 < n; p1++) {
-         for (auto i2 = 0; i2 < n - 1; i2++) {
+      for (auto p1 = 0; p1 < c; p1++) {
+         for (auto i2 = 0; i2 < c - 1; i2++) {
             auto o2 = i2 + 1;
             get_element(p1, o2, p1, i2, &a_2) = get_element(p1, i2, p1, o2, &a_2_dagger) = std::sqrt(o2);
          }
@@ -104,25 +117,6 @@ struct U_matrix {
       }
    }
 
-   void create_matrix() {
-      matrix = decltype(matrix)(n * n * n * n);
-      adding_1 = decltype(adding_1)(n * n * n * n);
-      adding_2 = decltype(adding_2)(n * n * n * n);
-   }
-   void show_matrix(std::vector<complex>* m = nullptr) {
-      if (m == nullptr) {
-         m = &matrix;
-      }
-      for (auto i = 0; i < n * n; i++) {
-         for (auto j = 0; j < n * n; j++) {
-            if (j != 0) {
-               std::cout << ", ";
-            }
-            std::cout << (*m)[j * n * n + i];
-         }
-         std::cout << "\n";
-      }
-   }
    std::complex<double>& get_element(long in1, long in2, long out1, long out2, std::vector<complex>* m = nullptr) {
       if (m == nullptr) {
          m = &matrix;
@@ -152,7 +146,7 @@ struct U_matrix {
    }
 
    void generate_00() {
-      for (auto i = 0; i < n; i++) {
+      for (auto i = 0; i < c; i++) {
          get_element(0, 0, i, i) = std::pow(-std::exp(-1i * phi) * std::tanh(r / 2.), i) / std::cosh(r / 2.);
       }
       norm_column(0, 0);
@@ -160,29 +154,16 @@ struct U_matrix {
 
    void generate_other() {
       // get_element(0, 0, ..., ...) --adding 2-->  get_element(0, 1, ..., ...);
-      for (auto i = 1; i < n; i++) {
+      for (auto i = 1; i < c; i++) {
          mv(n * n, adding_2.data(), &get_element(0, i - 1, 0, 0), &get_element(0, i, 0, 0));
          norm_column(0, i);
       }
-      for (auto j = 1; j < n; j++) {
-         for (auto i = 0; i < n; i++) {
+      for (auto j = 1; j < c; j++) {
+         for (auto i = 0; i < c; i++) {
             mv(n * n, adding_1.data(), &get_element(j - 1, i, 0, 0), &get_element(j, i, 0, 0));
             norm_column(j, i);
          }
       }
-   }
-
-   void generate_all(int _n, double _r, double _omega, double _phi, double _psi) {
-      n = _n;
-      create_matrix();
-      r = _r;
-      omega = _omega;
-      phi = _phi;
-      psi = _psi;
-      generate_00();
-      generate_parameter();
-      generate_adding();
-      generate_other();
    }
 };
 
@@ -193,18 +174,15 @@ namespace py = pybind11;
 
 PYBIND11_MODULE(matrix_U, matrix_U_m) {
    matrix_U_m.doc() = "generate matrix U for EOM loop";
-   py::class_<U_matrix>(matrix_U_m, "matrix_U", "U matrix for EOM loop, dimension is [I1, I2, O1, O2]", py::buffer_protocol())
-         .def(py::init<>([](int n, double r, double omega, double phi, double psi) {
-                 auto U = U_matrix();
-                 U.generate_all(n, r, omega, phi, psi);
-                 return U;
-              }),
-              py::arg("n"),
+   py::class_<matrix_U>(matrix_U_m, "matrix_U", "U matrix for EOM loop, dimension is [I1, I2, O1, O2]", py::buffer_protocol())
+         .def(py::init<>([](int n, int c, double r, double omega, double phi, double psi) { return matrix_U(n, c, r, omega, phi, psi); }),
+              py::arg("cutoff_matrix"),
+              py::arg("cutoff_phisics"),
               py::arg("r"),
               py::arg("omega"),
               py::arg("phi"),
               py::arg("psi"))
-         .def_buffer([](U_matrix& U) {
+         .def_buffer([](matrix_U& U) {
             auto n = U.n;
             return py::buffer_info{
                   U.matrix.data(),

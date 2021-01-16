@@ -29,7 +29,7 @@ struct matrix_A {
 
    std::vector<complex> matrix;
    matrix_A(int _n, int _c, int _k, double _eta) : n(_n), c(_c), k(_k), eta(_eta) {
-      matrix = std::vector<complex>(n * n);
+      matrix.resize(n * n);
       for (auto i = k; i < c; i++) {
          get_element(i - k, i) = create_element(i, k, eta);
       }
