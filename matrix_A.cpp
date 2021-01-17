@@ -69,13 +69,13 @@ PYBIND11_MODULE(matrix_A, matrix_A_m) {
               py::arg("particle_number_lost"),
               py::arg("eta"))
          .def_buffer([](matrix_A& A) {
-            auto n = A.n;
+            std::size_t n = A.n;
             return py::buffer_info{
                   A.matrix.data(),
                   sizeof(complex),
                   py::format_descriptor<complex>::format(),
                   2,
-                  std::vector<int>{n, n},
-                  std::vector<int>{sizeof(complex) * n, sizeof(complex)}};
+                  std::vector<std::size_t>{n, n},
+                  std::vector<std::size_t>{sizeof(complex) * n, sizeof(complex)}};
          });
 }

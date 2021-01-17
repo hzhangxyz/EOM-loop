@@ -183,13 +183,13 @@ PYBIND11_MODULE(matrix_U, matrix_U_m) {
               py::arg("phi"),
               py::arg("psi"))
          .def_buffer([](matrix_U& U) {
-            auto n = U.n;
+            std::size_t n = U.n;
             return py::buffer_info{
                   U.matrix.data(),
                   sizeof(complex),
                   py::format_descriptor<complex>::format(),
                   4,
-                  std::vector<int>{n, n, n, n},
-                  std::vector<int>{sizeof(complex) * n * n * n, sizeof(complex) * n * n, sizeof(complex) * n, sizeof(complex)}};
+                  std::vector<std::size_t>{n, n, n, n},
+                  std::vector<std::size_t>{sizeof(complex) * n * n * n, sizeof(complex) * n * n, sizeof(complex) * n, sizeof(complex)}};
          });
 }
