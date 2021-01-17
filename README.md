@@ -7,7 +7,5 @@ EOM loop simulator
 Here is an example
 
 ```
-./a.out -R=0.8 --omega=0.1 --phi=0 --psi=0 --delta=0.01 -W 0 -L10 -N3
+python main.py -l=50 -n=4 -r=0.8 --omega=0.8 --phi=0 --psi=0 --eta=1 --delta=0.1
 ```
-
-run `./a.out --help` for more information
