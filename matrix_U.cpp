@@ -24,6 +24,11 @@
 using namespace std::literals::complex_literals;
 using complex = std::complex<double>;
 
+/**
+ * 矩阵乘以向量
+ *
+ * y=A@x
+ */
 void mv(int n, const complex* A, const complex* x, complex* y) {
    for (auto i = 0; i < n; i++) {
       y[i] = 0;
@@ -33,6 +38,9 @@ void mv(int n, const complex* A, const complex* x, complex* y) {
    }
 }
 
+/**
+ * 描述EOM loop中U门的矩阵
+ */
 struct matrix_U {
    int n; // 矩阵截断
    int c; // 物理截断
@@ -117,6 +125,9 @@ struct matrix_U {
       }
    }
 
+   /**
+    * 获取n*n*n*n的tensor中的某个元素
+    */
    std::complex<double>& get_element(long in1, long in2, long out1, long out2, std::vector<complex>* m = nullptr) {
       if (m == nullptr) {
          m = &matrix;

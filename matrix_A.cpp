@@ -21,7 +21,15 @@
 
 using complex = std::complex<double>;
 
+/**
+ * 用于描述粒子透过率的矩阵
+ *
+ * 参见PHYSICAL REVIEW A70, 042308(2004) 公式13
+ */
 struct matrix_A {
+   // 为了后续操作简单, 这里有两个截断, 原则上系统是无穷维的
+   // 但是实际上我们只保留到第c位, 描述他的矩阵可以是c维的
+   // 也可以是大于c维的矩阵, 即n维, 多余的维度填0
    int n; // 矩阵截断
    int c; // 物理截断
    int k; // 丢失粒子数
@@ -29,12 +37,17 @@ struct matrix_A {
 
    std::vector<complex> matrix;
    matrix_A(int _n, int _c, int _k, double _eta) : n(_n), c(_c), k(_k), eta(_eta) {
+      // 截断为n, 矩阵大小为n*n
       matrix.resize(n * n);
       for (auto i = k; i < c; i++) {
+         // Ak矩阵的|i-k><i|项, i应取k到无穷大, 但是这里只取到物理截断
          get_element(i - k, i) = create_element(i, k, eta);
       }
    }
 
+   /**
+    * 获取n*n矩阵的某个元素
+    */
    complex& get_element(int i, int j, std::vector<complex>* p = nullptr) {
       if (!p) {
          p = &matrix;
@@ -42,15 +55,20 @@ struct matrix_A {
       return matrix[i * n + j];
    }
 
+   /**
+    * 获得组合数
+    */
    static int binomial(int n, int k) {
       if (k == 0 || k == n) {
          return 1;
       } else {
+         // 递归求值
          return binomial(n - 1, k - 1) + binomial(n - 1, k);
       }
    }
 
    static complex create_element(int n, int k, double eta) {
+      // 参见公式13
       return std::sqrt(binomial(n, k)) * std::pow(eta, (n - k) / 2.) * std::pow(1 - eta, k / 2.);
    }
 };

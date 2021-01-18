@@ -55,32 +55,40 @@ def get_A(n, k, eta):
     result.block[{}] = matrix_A(n, n, k, eta)
     return result
 
-def trace_mps(l, a, g = None):
+def trace_mps(l, a, g = None, bs = None):
     ah = a.shrink({"1.I1": 0, "2.I1": 0}).edge_rename({"1.O2": "A.1.O2", "2.O2": "A.2.O2"})
+    if bs:
+        ah = ah.contract(bs, {("1.O1", "1")}).edge_rename({"2": "1.O1"})
     result = ah.trace({("1.O1", "2.O1")})
     for t in range(1, l):
         if g:
             result = result.contract(g.edge_rename({"1.O": "A.1.O2", "2.O": "A.2.O2"}), {("A.1.O2", "1.I"), ("A.2.O2", "2.I")})
-        result = result.contract(a.edge_rename({"1.O2": "A.1.O2", "2.O2": "A.2.O2"}), {("A.1.O2", "1.I1"), ("A.2.O2", "2.I1")})\
-        .trace({("1.O1", "2.O1")})
+        result = result.contract(a.edge_rename({"1.O2": "A.1.O2", "2.O2": "A.2.O2"}), {("A.1.O2", "1.I1"), ("A.2.O2", "2.I1")})
+        if bs:
+            result = result.contract(bs, {("1.O1", "1")}).edge_rename({"2": "1.O1"})
+        result = result.trace({("1.O1", "2.O1")})
     return result.trace({("A.1.O2", "A.2.O2")})
 
-def contract_mps(l, a, b, ga = None, gb = None):
+def contract_mps(l, a, b, ga = None, gb = None, bs = None):
     ah = a.shrink({"1.I1": 0, "2.I1": 0}).edge_rename({"1.O2": "A.1.O2", "2.O2": "A.2.O2"})
     bh = b.shrink({"1.I1": 0, "2.I1": 0}).edge_rename({"1.O2": "B.1.O2", "2.O2": "B.2.O2"})
+    if bs:
+        ah = ah.contract(bs, {("1.O1", "1")}).edge_rename({"2": "1.O1"}).contract(bs, {("2.O1", "1")}).edge_rename({"2": "2.O1"})
     result = ah.contract(bh, {("1.O1", "1.O1"), ("2.O1", "2.O1")});
     for t in range(1, l):
         if ga:
             result = result.contract(ga.edge_rename({"1.O": "A.1.O2", "2.O": "A.2.O2"}), {("A.1.O2", "1.I"), ("A.2.O2", "2.I")})
         if gb:
             result = result.contract(gb.edge_rename({"1.O": "B.1.O2", "2.O": "B.2.O2"}), {("B.1.O2", "1.I"), ("B.2.O2", "2.I")})
-        result = result.contract(a.edge_rename({"1.O2": "A.1.O2", "2.O2": "A.2.O2"}), {("A.1.O2", "1.I1"), ("A.2.O2", "2.I1")})\
-        .contract(
+        result = result.contract(a.edge_rename({"1.O2": "A.1.O2", "2.O2": "A.2.O2"}), {("A.1.O2", "1.I1"), ("A.2.O2", "2.I1")})
+        if bs:
+            result = result.contract(bs, {("1.O1", "1")}).edge_rename({"2": "1.O1"}).contract(bs, {("2.O1", "1")}).edge_rename({"2": "2.O1"})
+        result = result.contract(
             b.edge_rename({"1.O2": "B.1.O2", "2.O2": "B.2.O2"}),
             {("B.1.O2", "1.I1"), ("B.2.O2", "2.I1"), ("1.O1", "1.O1"), ("2.O1", "2.O1")})
     return result.trace({("A.1.O2", "B.1.O2"), ("A.2.O2", "B.2.O2")})
 
-def main(l, n, r, omega, phi, psi, eta, delta):
+def main(l, n, r, omega, phi, psi, eta, delta, backward = 3):
     U = get_U(n, r, omega, phi, psi)
     S = get_site([1], [U])
     sample = 5
@@ -90,9 +98,12 @@ def main(l, n, r, omega, phi, psi, eta, delta):
     Ss /= Ss.norm_max()
     Aks = [get_A(n, k, eta) for k in range(n)]
     gsite = sum([Ak.edge_rename({"I": "1.I", "O": "1.O"}).contract(Ak.conjugate().edge_rename({"I": "2.I", "O": "2.O"}), set()) for Ak in Aks])
-    tracerhorhos = contract_mps(l, S, Ss, gb = gsite)
-    tracerho = trace_mps(l, S)
-    tracerhos = trace_mps(l, Ss, gsite)
+    bsite = Tensor(["1", "2"], [n, n]).zero()
+    for i in range(backward):
+        bsite[{"1":i, "2":i}] = 1
+    tracerhorhos = contract_mps(l, S, Ss, gb = gsite, bs = bsite)
+    tracerho = trace_mps(l, S, bs = bsite)
+    tracerhos = trace_mps(l, Ss, gsite, bs = bsite)
     f = tracerhorhos / (tracerho * tracerhos)
     print(f"Fidelity is {complex(f).real}")
 
