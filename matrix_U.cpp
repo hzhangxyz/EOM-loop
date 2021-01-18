@@ -21,8 +21,8 @@
 #include <iostream>
 #include <vector>
 
-using namespace std::literals::complex_literals;
 using complex = std::complex<double>;
+inline const complex imag_unit = {0, 1};
 
 /**
  * 矩阵乘以向量
@@ -77,13 +77,13 @@ struct matrix_U {
    void generate_parameter() {
       using namespace std;
       sigma1 = cos(omega / 2.) * cosh(r / 2.);
-      tau1 = exp(-1i * (phi + psi)) * sin(omega / 2.) * sinh(r / 2.);
-      mu1 = exp(-1i * psi) * sin(omega / 2.) * cosh(r / 2.);
-      nu1 = exp(-1i * phi) * cos(omega / 2.) * sinh(r / 2.);
-      sigma2 = -exp(1i * psi) * sin(omega / 2.) * cosh(r / 2.);
-      tau2 = exp(-1i * phi) * cos(omega / 2.) * sinh(r / 2.);
+      tau1 = exp(-imag_unit * (phi + psi)) * sin(omega / 2.) * sinh(r / 2.);
+      mu1 = exp(-imag_unit * psi) * sin(omega / 2.) * cosh(r / 2.);
+      nu1 = exp(-imag_unit * phi) * cos(omega / 2.) * sinh(r / 2.);
+      sigma2 = -exp(imag_unit * psi) * sin(omega / 2.) * cosh(r / 2.);
+      tau2 = exp(-imag_unit * phi) * cos(omega / 2.) * sinh(r / 2.);
       mu2 = cos(omega / 2.) * cosh(r / 2.);
-      nu2 = -exp(-1i * (phi - psi)) * sin(omega / 2.) * sinh(r / 2.);
+      nu2 = -exp(-imag_unit * (phi - psi)) * sin(omega / 2.) * sinh(r / 2.);
    }
 
    void generate_adding() {
@@ -158,7 +158,7 @@ struct matrix_U {
 
    void generate_00() {
       for (auto i = 0; i < c; i++) {
-         get_element(0, 0, i, i) = std::pow(-std::exp(-1i * phi) * std::tanh(r / 2.), i) / std::cosh(r / 2.);
+         get_element(0, 0, i, i) = std::pow(-std::exp(-imag_unit * phi) * std::tanh(r / 2.), i) / std::cosh(r / 2.);
       }
       norm_column(0, 0);
    }

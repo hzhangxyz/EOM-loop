@@ -66,13 +66,14 @@ def trace_two(length, As, Bs):
     }).contract(Bs[0].edge_rename({"R": "B.R"}), {("U", "D"), ("D", "U")})
     for t in range(1, length):
         # mpo的第t个格点按照最左端的规则重命名并收缩两个mpo的第t个格点
-        this = As[t].edge_rename({
-            "L": "A.L",
-            "R": "A.R"
-        }).contract(Bs[t].edge_rename({
-            "L": "B.L",
-            "R": "B.R"
-        }), {("U", "D"), ("D", "U")})
+        if As[t] != As[t - 1] or Bs[t] != Bs[t - 1]:
+            this = As[t].edge_rename({
+                "L": "A.L",
+                "R": "A.R"
+            }).contract(Bs[t].edge_rename({
+                "L": "B.L",
+                "R": "B.R"
+            }), {("U", "D"), ("D", "U")})
         # 收缩到左边
         result = result.contract(this, {("A.R", "A.L"), ("B.R", "B.L")})
     return result
@@ -93,7 +94,9 @@ def fidelity(length, As, Bs):
 
 
 def build_from_UU(l, UU, n):
-    UU_with_I2_0 = UU.shrink({"UI2": 0, "DI2": 0})
+    # 应该在这里shrink, 为了加速在create_UU中shrink
+    # UU_with_I2_0 = UU.shrink({"UI2": 0, "DI2": 0})
+    UU_with_I2_0 = UU
     result = []
     result.append(
         UU_with_I2_0.shrink({
@@ -121,6 +124,8 @@ def build_from_UU(l, UU, n):
 
 def create_UU(n, c, r, omega, phi, psi):
     U = get_U(n, c, r, omega, phi, psi)
+    # 应该在create_from_UU中shrink为了加速在这里提前shrink
+    U = U.shrink({"I2": 0})
     UU = U.edge_rename({
         "I1": "UI1",
         "O1": "UO1",
@@ -185,8 +190,14 @@ def create_kraus(n, c, eta):
 
 
 def add_kraus(As, sites, kraus):
+    last_As = None
     for i in sites:
-        As[i] = As[i].contract(kraus, {("R", "L")})
+        if last_As == As[i]:
+            As[i] = As[j]
+        else:
+            last_As = As[i]
+            j = i
+            As[i] = As[i].contract(kraus, {("R", "L")})
 
 
 def create_post(n, c=None, selected=None):
@@ -198,8 +209,8 @@ def create_post(n, c=None, selected=None):
             for i in range(c):
                 result[{"U": i, "D": i}] = 1
     else:
-        if select is not None:
-            for i in select:
+        if selected is not None:
+            for i in selected:
                 result[{"U": i, "D": i}] = 1
         else:
             pass
@@ -207,17 +218,81 @@ def create_post(n, c=None, selected=None):
 
 
 def add_post(As, sites, post):
+    last_As = None
     for i in sites:
-        As[i] = As[i].contract(post, {("U", "D")}).contract(post, {("D", "U")})
+        if last_As == As[i]:
+            As[i] = As[j]
+        else:
+            last_As = As[i]
+            j = i
+            As[i] = As[i].contract(post,
+                                   {("U", "D")}).contract(post, {("D", "U")})
 
 
-def main(l, n, r, omega, phi, psi, eta, delta, post):
-    As = build_chain(l, n, n, r, omega, phi, psi)
-    Bs = build_chain(l, n, n,r, omega, phi, psi, delta_r=delta)
-    add_post(As, range(l + 1), create_post(n, post))
-    add_post(Bs, range(l + 1), create_post(n, post))
-    add_kraus(Bs, range(l - 1), create_kraus(n, n, eta))
+def 截断收敛性(l, n, c, r, omega, phi, psi):
+    As = build_chain(l, n, c, r, omega, phi, psi)
+    Bs = build_chain(l, n, n, r, omega, phi, psi)
     print(fidelity(l + 1, As, Bs))
+
+
+def 误差大小(l,
+         n,
+         r,
+         omega,
+         phi,
+         psi,
+         delta_r=None,
+         delta_omega=None,
+         delta_phi=None,
+         delta_psi=None,
+         eta=1,
+         post=None,
+         post_last=None):
+    As = build_chain(l, n, n, r, omega, phi, psi)
+    Bs = build_chain(l,
+                     n,
+                     n,
+                     r,
+                     omega,
+                     phi,
+                     psi,
+                     delta_r=delta_r,
+                     delta_omega=delta_omega,
+                     delta_phi=delta_phi,
+                     delta_psi=delta_psi)
+    if eta != 1:
+        add_kraus(Bs, range(l - 1), create_kraus(n, n, eta))
+    if post is not None:
+        projection = create_post(n, post)
+        add_post(As, range(l), projection)
+        add_post(Bs, range(l), projection)
+        if post_last is None:
+            add_post(As, [l], projection)
+            add_post(Bs, [l], projection)
+    if post_last is not None:
+        projection = create_post(n, selected=post_last)
+        add_post(As, [l], projection)
+        add_post(Bs, [l], projection)
+    print(fidelity(l + 1, As, Bs))
+
+
+def 后选择成功率(l, n, r, omega, phi, psi, post, post_last=None):
+    As = build_chain(l, n, n, r, omega, phi, psi)
+    Bs = build_chain(l, n, n, r, omega, phi, psi)
+    add_post(Bs, range(l), create_post(n, post))
+    if post_last is None:
+        add_post(Bs, [l], create_post(n, post))
+    else:
+        add_post(Bs, [l], create_post(n, selected=post_last))
+    for i in range(l + 1):
+        As[i] /= As[i].norm_max()
+        Bs[i] /= Bs[i].norm_max()
+    # 两个密度矩阵的fidelity = trace(a@b)
+    # 由于没有归一化, 所以一fidelity = trace(a@b) / (trace(a)trace(b))
+    trace_a = trace_one(l + 1, As)
+    trace_b = trace_one(l + 1, Bs)
+    f = trace_b / trace_a
+    print(complex(f).real)
 
 
 if __name__ == "__main__":
@@ -228,4 +303,4 @@ if __name__ == "__main__":
         out.write(text)
 
     fire.core.Display = Display
-    fire.Fire(main)
+    fire.Fire()
