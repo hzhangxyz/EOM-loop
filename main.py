@@ -65,6 +65,8 @@ def trace_two(length, As, Bs):
         "R": "A.R"
     }).contract(Bs[0].edge_rename({"R": "B.R"}), {("U", "D"), ("D", "U")})
     for t in range(1, length):
+        # 这个缩并路径比较慢
+        """
         # mpo的第t个格点按照最左端的规则重命名并收缩两个mpo的第t个格点
         if As[t] != As[t - 1] or Bs[t] != Bs[t - 1]:
             this = As[t].edge_rename({
@@ -76,6 +78,15 @@ def trace_two(length, As, Bs):
             }), {("U", "D"), ("D", "U")})
         # 收缩到左边
         result = result.contract(this, {("A.R", "A.L"), ("B.R", "B.L")})
+        """
+        result = result.contract(As[t].edge_rename({
+            "L": "A.L",
+            "R": "A.R"
+        }), {("A.R", "A.L")})
+        result = result.contract(Bs[t].edge_rename({
+            "L": "B.L",
+            "R": "B.R"
+        }), {("B.R", "B.L"), ("D", "U"), ("U", "D")})
     return result
 
 
@@ -229,25 +240,25 @@ def add_post(As, sites, post):
                                    {("U", "D")}).contract(post, {("D", "U")})
 
 
-def 截断收敛性(l, n, c, r, omega, phi, psi):
+def cutoff_convergence(l, n, c, r, omega, phi, psi):
     As = build_chain(l, n, c, r, omega, phi, psi)
     Bs = build_chain(l, n, n, r, omega, phi, psi)
     print(fidelity(l + 1, As, Bs))
 
 
-def 误差大小(l,
-         n,
-         r,
-         omega,
-         phi,
-         psi,
-         delta_r=None,
-         delta_omega=None,
-         delta_phi=None,
-         delta_psi=None,
-         eta=1,
-         post=None,
-         post_last=None):
+def error_convergence(l,
+                      n,
+                      r,
+                      omega,
+                      phi,
+                      psi,
+                      delta_r=None,
+                      delta_omega=None,
+                      delta_phi=None,
+                      delta_psi=None,
+                      eta=1,
+                      post=None,
+                      post_last=None):
     As = build_chain(l, n, n, r, omega, phi, psi)
     Bs = build_chain(l,
                      n,
@@ -276,7 +287,7 @@ def 误差大小(l,
     print(fidelity(l + 1, As, Bs))
 
 
-def 后选择成功率(l, n, r, omega, phi, psi, post, post_last=None):
+def post_selection(l, n, r, omega, phi, psi, post, post_last=None):
     As = build_chain(l, n, n, r, omega, phi, psi)
     Bs = build_chain(l, n, n, r, omega, phi, psi)
     add_post(Bs, range(l), create_post(n, post))
@@ -303,4 +314,8 @@ if __name__ == "__main__":
         out.write(text)
 
     fire.core.Display = Display
-    fire.Fire()
+    fire.Fire({
+        "后选择成功率": post_selection,
+        "截断收敛性": cutoff_convergence,
+        "误差大小": error_convergence
+    })

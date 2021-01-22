@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.13)
+cmake_minimum_required(VERSION 3.10)
 project(EOM-loop)
 
 add_compile_options("$<$<CXX_COMPILER_ID:MSVC>:/utf-8>")

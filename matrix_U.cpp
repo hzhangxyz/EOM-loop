@@ -22,7 +22,7 @@
 #include <vector>
 
 using complex = std::complex<double>;
-inline const complex imag_unit = {0, 1};
+const complex imag_unit = {0, 1};
 
 /**
  * 矩阵乘以向量
