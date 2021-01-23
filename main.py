@@ -248,6 +248,7 @@ def add_parity(As, n, length, parity):
             data_P[p] = [[1, 0], [0, 1]]
         else:
             data_P[p] = [[0, 1], [1, 0]]
+    last_As = None
     for t in range(length + 1):
         Pt = P
         merge_map = {"L": ["AL", "PL"], "R": ["AR", "PR"]}
@@ -262,22 +263,26 @@ def add_parity(As, n, length, parity):
                 Pt = Pt.shrink({"R": 0})
             else:
                 raise RuntimeError("Invalid parity")
-        As[t] = As[t].edge_rename({
-            "L": "AL",
-            "R": "AR"
-        }).contract(Pt.edge_rename({
-            "L": "PL",
-            "R": "PR",
-            "P": "U"
-        }), set()).merge_edge(merge_map)
-        As[t] = As[t].edge_rename({
-            "L": "AL",
-            "R": "AR"
-        }).contract(Pt.edge_rename({
-            "L": "PL",
-            "R": "PR",
-            "P": "D"
-        }), set()).merge_edge(merge_map)
+        if t != 0 and t != length and last_As == As[t]:
+            As[t] = As[t - 1]
+        else:
+            last_As = As[t]
+            As[t] = As[t].edge_rename({
+                "L": "AL",
+                "R": "AR"
+            }).contract(Pt.edge_rename({
+                "L": "PL",
+                "R": "PR",
+                "P": "U"
+            }), set()).merge_edge(merge_map)
+            As[t] = As[t].edge_rename({
+                "L": "AL",
+                "R": "AR"
+            }).contract(Pt.edge_rename({
+                "L": "PL",
+                "R": "PR",
+                "P": "D"
+            }), set()).merge_edge(merge_map)
 
 
 def cutoff_convergence(l, n, c, r, omega, phi, psi):
@@ -314,6 +319,7 @@ def error_convergence(l,
                      delta_psi=delta_psi)
     if eta != 1:
         add_kraus(Bs, range(l - 1), create_kraus(n, n, eta))
+    Cs = Bs[:]
     if post is not None:
         projection = create_post(n, post)
         add_post(As, range(l), projection)
@@ -328,36 +334,17 @@ def error_convergence(l,
     if filter_parity is not None:
         add_parity(As, n, l, filter_parity)
         add_parity(Bs, n, l, filter_parity)
-    print(fidelity(l + 1, As, Bs))
+    print("Fidelity is", fidelity(l + 1, As, Bs))
 
-
-def post_selection(l,
-                   n,
-                   r,
-                   omega,
-                   phi,
-                   psi,
-                   post,
-                   post_last=None,
-                   filter_parity=None):
-    As = build_chain(l, n, n, r, omega, phi, psi)
-    Bs = build_chain(l, n, n, r, omega, phi, psi)
-    add_post(Bs, range(l), create_post(n, post))
-    if post_last is None:
-        add_post(Bs, [l], create_post(n, post))
-    else:
-        add_post(Bs, [l], create_post(n, selected=post_last))
-    if filter_parity is not None:
-        add_parity(Bs, n, l, filter_parity)
     for i in range(l + 1):
-        As[i] /= As[i].norm_max()
         Bs[i] /= Bs[i].norm_max()
+        Cs[i] /= Cs[i].norm_max()
     # 两个密度矩阵的fidelity = trace(a@b)
     # 由于没有归一化, 所以一fidelity = trace(a@b) / (trace(a)trace(b))
-    trace_a = trace_one(l + 1, As)
     trace_b = trace_one(l + 1, Bs)
-    f = trace_b / trace_a
-    print(complex(f).real)
+    trace_c = trace_one(l + 1, Cs)
+    f = trace_b / trace_c
+    print("Post Selection Rate is", complex(f).real)
 
 
 if __name__ == "__main__":
@@ -368,8 +355,4 @@ if __name__ == "__main__":
         out.write(text)
 
     fire.core.Display = Display
-    fire.Fire({
-        "后选择成功率": post_selection,
-        "截断收敛性": cutoff_convergence,
-        "误差大小": error_convergence
-    })
+    fire.Fire({"convergence": cutoff_convergence, "error": error_convergence})
