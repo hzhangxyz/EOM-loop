@@ -240,6 +240,46 @@ def add_post(As, sites, post):
                                    {("U", "D")}).contract(post, {("D", "U")})
 
 
+def add_parity(As, n, length, parity):
+    P = Tensor(["P", "L", "R"], [n, 2, 2])
+    data_P = P.block[["P", "L", "R"]]
+    for p in range(n):
+        if p % 2 == 0:
+            data_P[p] = [[1, 0], [0, 1]]
+        else:
+            data_P[p] = [[0, 1], [1, 0]]
+    for t in range(length + 1):
+        Pt = P
+        merge_map = {"L": ["AL", "PL"], "R": ["AR", "PR"]}
+        if t == 0:
+            del merge_map["L"]
+            Pt = Pt.shrink({"L": 0})
+        if t == length:
+            del merge_map["R"]
+            if parity == 1:
+                Pt = Pt.shrink({"R": 3})
+            elif parity == 0:
+                Pt = Pt.shrink({"R": 0})
+            else:
+                raise RuntimeError("Invalid parity")
+        As[t] = As[t].edge_rename({
+            "L": "AL",
+            "R": "AR"
+        }).contract(Pt.edge_rename({
+            "L": "PL",
+            "R": "PR",
+            "P": "U"
+        }), set()).merge_edge(merge_map)
+        As[t] = As[t].edge_rename({
+            "L": "AL",
+            "R": "AR"
+        }).contract(Pt.edge_rename({
+            "L": "PL",
+            "R": "PR",
+            "P": "D"
+        }), set()).merge_edge(merge_map)
+
+
 def cutoff_convergence(l, n, c, r, omega, phi, psi):
     As = build_chain(l, n, c, r, omega, phi, psi)
     Bs = build_chain(l, n, n, r, omega, phi, psi)
@@ -258,7 +298,8 @@ def error_convergence(l,
                       delta_psi=None,
                       eta=1,
                       post=None,
-                      post_last=None):
+                      post_last=None,
+                      filter_parity=None):
     As = build_chain(l, n, n, r, omega, phi, psi)
     Bs = build_chain(l,
                      n,
@@ -284,10 +325,21 @@ def error_convergence(l,
         projection = create_post(n, selected=post_last)
         add_post(As, [l], projection)
         add_post(Bs, [l], projection)
+    if filter_parity is not None:
+        add_parity(As, n, l, filter_parity)
+        add_parity(Bs, n, l, filter_parity)
     print(fidelity(l + 1, As, Bs))
 
 
-def post_selection(l, n, r, omega, phi, psi, post, post_last=None):
+def post_selection(l,
+                   n,
+                   r,
+                   omega,
+                   phi,
+                   psi,
+                   post,
+                   post_last=None,
+                   filter_parity=None):
     As = build_chain(l, n, n, r, omega, phi, psi)
     Bs = build_chain(l, n, n, r, omega, phi, psi)
     add_post(Bs, range(l), create_post(n, post))
@@ -295,6 +347,8 @@ def post_selection(l, n, r, omega, phi, psi, post, post_last=None):
         add_post(Bs, [l], create_post(n, post))
     else:
         add_post(Bs, [l], create_post(n, selected=post_last))
+    if filter_parity is not None:
+        add_parity(Bs, n, l, filter_parity)
     for i in range(l + 1):
         As[i] /= As[i].norm_max()
         Bs[i] /= Bs[i].norm_max()
