@@ -100,6 +100,7 @@ def fidelity(length, As, Bs):
     trace_a = trace_one(length, As)
     trace_b = trace_one(length, Bs)
     trace_ab = trace_two(length, As, Bs)
+    # print(trace_a, trace_b, trace_ab)
     f = trace_ab / (trace_a * trace_b)
     return complex(f).real
 
@@ -240,7 +241,7 @@ def add_post(As, sites, post):
                                    {("U", "D")}).contract(post, {("D", "U")})
 
 
-def add_parity(As, n, length, parity):
+def add_parity(As, n, length, parity, only_up=False):
     P = Tensor(["P", "L", "R"], [n, 2, 2])
     data_P = P.block[["P", "L", "R"]]
     for p in range(n):
@@ -258,7 +259,7 @@ def add_parity(As, n, length, parity):
         if t == length:
             del merge_map["R"]
             if parity == 1:
-                Pt = Pt.shrink({"R": 3})
+                Pt = Pt.shrink({"R": 1})
             elif parity == 0:
                 Pt = Pt.shrink({"R": 0})
             else:
@@ -275,14 +276,15 @@ def add_parity(As, n, length, parity):
                 "R": "PR",
                 "P": "U"
             }), set()).merge_edge(merge_map)
-            As[t] = As[t].edge_rename({
-                "L": "AL",
-                "R": "AR"
-            }).contract(Pt.edge_rename({
-                "L": "PL",
-                "R": "PR",
-                "P": "D"
-            }), set()).merge_edge(merge_map)
+            if not only_up:
+                As[t] = As[t].edge_rename({
+                    "L": "AL",
+                    "R": "AR"
+                }).contract(Pt.edge_rename({
+                    "L": "PL",
+                    "R": "PR",
+                    "P": "D"
+                }), set()).merge_edge(merge_map)
 
 
 def cutoff_convergence(l, n, c, r, omega, phi, psi):
@@ -332,8 +334,8 @@ def error_convergence(l,
         add_post(As, [l], projection)
         add_post(Bs, [l], projection)
     if filter_parity is not None:
-        add_parity(As, n, l, filter_parity)
-        add_parity(Bs, n, l, filter_parity)
+        add_parity(As, n, l, filter_parity, only_up=True)
+        add_parity(Bs, n, l, filter_parity, only_up=True)
     print("Fidelity is", fidelity(l + 1, As, Bs))
 
     for i in range(l + 1):
