@@ -293,6 +293,19 @@ def cutoff_convergence(l, n, c, r, omega, phi, psi):
     print(fidelity(l + 1, As, Bs))
 
 
+def exact_simulation(l, n, r, omega, phi, psi):
+    As = build_chain(l, n, n, r, omega, phi, psi)
+    result = As[0].edge_rename({"U": "U0", "D": "D0"})
+    for t in range(1, l + 1):
+        result = result.contract(
+            As[t].edge_rename({
+                "U": "U" + str(t),
+                "D": "D" + str(t)
+            }), {("R", "L")})
+    U, S, V = result.svd({"U" + str(i) for i in range(l + 1)}, "P", "P", cut=1)
+    print(U.shrink({"P": 0}))
+
+
 def error_convergence(l,
                       n,
                       r,
@@ -357,4 +370,8 @@ if __name__ == "__main__":
         out.write(text)
 
     fire.core.Display = Display
-    fire.Fire({"convergence": cutoff_convergence, "error": error_convergence})
+    fire.Fire({
+        "convergence": cutoff_convergence,
+        "error": error_convergence,
+        "exact": exact_simulation
+    })
