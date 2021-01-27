@@ -115,15 +115,15 @@ def build_from_UU(l, UU, n):
             "UI1": 0,
             "DI1": 0
         }).edge_rename({
-            "UO1": "U",
-            "DO1": "D"
-        }).merge_edge({"R": ["UO2", "DO2"]}))
+            "UO2": "U",
+            "DO2": "D"
+        }).merge_edge({"R": ["UO1", "DO1"]}))
     middle_site = UU_with_I2_0.edge_rename({
-        "UO1": "U",
-        "DO1": "D"
+        "UO2": "U",
+        "DO2": "D"
     }).merge_edge({
         "L": ["UI1", "DI1"],
-        "R": ["UO2", "DO2"]
+        "R": ["UO1", "DO1"]
     })
     for t in range(1, l):
         result.append(middle_site)
