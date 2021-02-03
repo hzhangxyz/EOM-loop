@@ -198,10 +198,11 @@ def create_kraus(n, c, eta):
             "O": "DO"
         }), set()) for Ak in Aks
     ])
-    return kraus.merge_edge({"L": ["UI", "DI"], "R": ["UO", "DO"]})
+    return kraus
 
 
 def add_kraus(As, sites, kraus):
+    big_kraus = kraus.merge_edge({"L": ["UI", "DI"], "R": ["UO", "DO"]})
     last_As = None
     for i in sites:
         if last_As == As[i]:
@@ -209,7 +210,19 @@ def add_kraus(As, sites, kraus):
         else:
             last_As = As[i]
             j = i
-            As[i] = As[i].contract(kraus, {("R", "L")})
+            As[i] = As[i].contract(big_kraus, {("R", "L")})
+    last_As = None
+    for i in sites:
+        if last_As == As[i]:
+            As[i] = As[j]
+        else:
+            last_As = As[i]
+            j = i
+            As[i] = As[i].contract(kraus, {("U", "UI"),
+                                           ("D", "DI")}).edge_rename({
+                                               "UO": "U",
+                                               "DO": "D"
+                                           })
 
 
 def create_post(n, c=None, selected=None):
@@ -333,7 +346,7 @@ def error_convergence(l,
                      delta_phi=delta_phi,
                      delta_psi=delta_psi)
     if eta != 1:
-        add_kraus(Bs, range(l - 1), create_kraus(n, n, eta))
+        add_kraus(Bs, range(l), create_kraus(n, n, eta))
     Cs = Bs[:]
     if post is not None:
         projection = create_post(n, post)
