@@ -18,28 +18,10 @@
 
 import numpy as np
 import TAT
-from matrix_A import matrix_A
-from matrix_U import matrix_U
+
+import tools
 
 Tensor = TAT(complex)
-
-
-def get_U(n, c, r, omega, phi, psi):
-    """
-    根据矩阵截断, 物理截断, r, omega, phi, psi创建U矩阵
-    """
-    result = Tensor(["I1", "I2", "O1", "O2"], [n, n, n, n])
-    result.block[{}] = matrix_U(n, c, r, omega, phi, psi)
-    return result
-
-
-def get_A(n, c, k, eta):
-    """
-    根据矩阵截断, 物理截断, k, eta创建A矩阵
-    """
-    result = Tensor(["O", "I"], [n, n])
-    result.block[{}] = matrix_A(n, c, k, eta)
-    return result
 
 
 def trace_one(length, As):
@@ -65,20 +47,7 @@ def trace_two(length, As, Bs):
         "R": "A.R"
     }).contract(Bs[0].edge_rename({"R": "B.R"}), {("U", "D"), ("D", "U")})
     for t in range(1, length):
-        # 这个缩并路径比较慢
-        """
-        # mpo的第t个格点按照最左端的规则重命名并收缩两个mpo的第t个格点
-        if As[t] != As[t - 1] or Bs[t] != Bs[t - 1]:
-            this = As[t].edge_rename({
-                "L": "A.L",
-                "R": "A.R"
-            }).contract(Bs[t].edge_rename({
-                "L": "B.L",
-                "R": "B.R"
-            }), {("U", "D"), ("D", "U")})
-        # 收缩到左边
-        result = result.contract(this, {("A.R", "A.L"), ("B.R", "B.L")})
-        """
+        # 先缩并掉相同位置的AB两个chain的site的方式比较慢
         result = result.contract(As[t].edge_rename({
             "L": "A.L",
             "R": "A.R"
@@ -105,10 +74,11 @@ def fidelity(length, As, Bs):
     return complex(f).real
 
 
-def build_from_UU(l, UU, n):
-    # 应该在这里shrink, 为了加速在create_UU中shrink
-    # UU_with_I2_0 = UU.shrink({"UI2": 0, "DI2": 0})
-    UU_with_I2_0 = UU
+def build_chain(l, UU, n):
+    if "UI2" in UU.name:
+        UU_with_I2_0 = UU.shrink({"UI2": 0, "DI2": 0})
+    else:
+        UU_with_I2_0 = UU
     result = []
     result.append(
         UU_with_I2_0.shrink({
@@ -132,97 +102,6 @@ def build_from_UU(l, UU, n):
             ("UL", "U"), ("DL", "D")
         }).merge_edge({"L": ["UL", "DL"]}))
     return result
-
-
-def create_UU(n, c, r, omega, phi, psi):
-    U = get_U(n, c, r, omega, phi, psi)
-    # 应该在create_from_UU中shrink为了加速在这里提前shrink
-    U = U.shrink({"I2": 0})
-    UU = U.edge_rename({
-        "I1": "UI1",
-        "O1": "UO1",
-        "I2": "UI2",
-        "O2": "UO2"
-    }).conjugate().contract(
-        U.edge_rename({
-            "I1": "DI1",
-            "O1": "DO1",
-            "I2": "DI2",
-            "O2": "DO2"
-        }), set())
-    return UU
-
-
-def uniform(mean, delta):
-    if delta is None:
-        return [mean]
-    else:
-        sample = 5
-        return [
-            mean * (1 + delta * i / sample)
-            for i in range(-sample, sample + 1)
-        ]
-
-
-def build_chain(l,
-                n,
-                c,
-                r,
-                omega,
-                phi,
-                psi,
-                delta_r=None,
-                delta_omega=None,
-                delta_phi=None,
-                delta_psi=None):
-    UUs = []
-    for real_r in uniform(r, delta_r):
-        for real_omega in uniform(omega, delta_omega):
-            for real_phi in uniform(phi, delta_phi):
-                for real_psi in uniform(psi, delta_psi):
-                    UUs.append(
-                        create_UU(n, c, real_r, real_omega, real_phi,
-                                  real_psi))
-    UU = sum(UUs) / len(UUs)
-    return build_from_UU(l, UU, n)
-
-
-def create_kraus(n, c, eta):
-    Aks = [get_A(n, c, k, eta) for k in range(n)]
-    kraus = sum([
-        Ak.edge_rename({
-            "I": "UI",
-            "O": "UO"
-        }).conjugate().contract(Ak.edge_rename({
-            "I": "DI",
-            "O": "DO"
-        }), set()) for Ak in Aks
-    ])
-    return kraus
-
-
-def add_kraus(As, sites, kraus):
-    big_kraus = kraus.merge_edge({"L": ["UI", "DI"], "R": ["UO", "DO"]})
-    last_As = None
-    for i in sites:
-        if last_As == As[i]:
-            As[i] = As[j]
-        else:
-            last_As = As[i]
-            j = i
-            As[i] = As[i].contract(big_kraus, {("R", "L")})
-    last_As = None
-    for i in sites:
-        if last_As == As[i]:
-            As[i] = As[j]
-        else:
-            last_As = As[i]
-            j = i
-            As[i] = As[i].contract(kraus, {("U", "UI"),
-                                           ("D", "DI")}).edge_rename({
-                                               "UO": "U",
-                                               "DO": "D"
-                                           })
 
 
 def create_post(n, c=None, selected=None):
@@ -264,22 +143,22 @@ def add_parity(As, n, length, parity, only_up=False):
             data_P[p] = [[0, 1], [1, 0]]
     last_As = None
     for t in range(length + 1):
-        Pt = P
-        merge_map = {"L": ["AL", "PL"], "R": ["AR", "PR"]}
-        if t == 0:
-            del merge_map["L"]
-            Pt = Pt.shrink({"L": 0})
-        if t == length:
-            del merge_map["R"]
-            if parity == 1:
-                Pt = Pt.shrink({"R": 1})
-            elif parity == 0:
-                Pt = Pt.shrink({"R": 0})
-            else:
-                raise RuntimeError("Invalid parity")
         if t != 0 and t != length and last_As == As[t]:
             As[t] = As[t - 1]
         else:
+            Pt = P
+            merge_map = {"L": ["AL", "PL"], "R": ["AR", "PR"]}
+            if t == 0:
+                del merge_map["L"]
+                Pt = Pt.shrink({"L": 0})
+            if t == length:
+                del merge_map["R"]
+                if parity == 1:
+                    Pt = Pt.shrink({"R": 1})
+                elif parity == 0:
+                    Pt = Pt.shrink({"R": 0})
+                else:
+                    raise RuntimeError("Invalid parity")
             last_As = As[t]
             As[t] = As[t].edge_rename({
                 "L": "AL",
@@ -301,13 +180,19 @@ def add_parity(As, n, length, parity, only_up=False):
 
 
 def cutoff_convergence(l, n, c, r, omega, phi, psi):
-    As = build_chain(l, n, c, r, omega, phi, psi)
-    Bs = build_chain(l, n, n, r, omega, phi, psi)
+    As = build_chain(l,
+                     tools.tensor_UU(n, c, r, omega, phi, psi, shrink_I2=True),
+                     n)
+    Bs = build_chain(l,
+                     tools.tensor_UU(n, n, r, omega, phi, psi, shrink_I2=True),
+                     n)
     print(fidelity(l + 1, As, Bs))
 
 
 def exact_simulation(l, n, r, omega, phi, psi):
-    As = build_chain(l, n, n, r, omega, phi, psi)
+    As = build_chain(l,
+                     tools.tensor_UU(n, n, r, omega, phi, psi, shrink_I2=True),
+                     n)
     result = As[0].edge_rename({"U": "U0", "D": "D0"})
     for t in range(1, l + 1):
         result = result.contract(
@@ -333,20 +218,24 @@ def error_convergence(l,
                       post=None,
                       post_last=None,
                       filter_parity=None):
-    As = build_chain(l, n, n, r, omega, phi, psi)
-    Bs = build_chain(l,
-                     n,
-                     n,
-                     r,
-                     omega,
-                     phi,
-                     psi,
-                     delta_r=delta_r,
-                     delta_omega=delta_omega,
-                     delta_phi=delta_phi,
-                     delta_psi=delta_psi)
-    if eta != 1:
-        add_kraus(Bs, range(l), create_kraus(n, n, eta))
+    As = build_chain(l,
+                     tools.tensor_UU(n, n, r, omega, phi, psi, shrink_I2=True),
+                     n)
+    Bs = build_chain(
+        l,
+        tools.tensor_UUAA(n,
+                          n,
+                          r,
+                          omega,
+                          phi,
+                          psi,
+                          delta_r,
+                          delta_omega,
+                          delta_phi,
+                          delta_psi,
+                          eta_1=eta,
+                          eta_2=eta,
+                          shrink_I2=True), n)
     Cs = Bs[:]
     if post is not None:
         projection = create_post(n, post)

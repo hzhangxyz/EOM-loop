@@ -8,3 +8,4 @@ CMakeSettings.json
 *.so
 *.dll
 *.xlsx
+__pycache__
