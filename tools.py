@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import weakref
+
 import numpy as np
 import TAT
 from matrix_A import matrix_A
@@ -137,3 +139,47 @@ def tensor_UUAA(n,
                                  "DO2"
                              })
     return UU
+
+
+class LazyHandle:
+    def __init__(self, func, *args, **kwargs):
+        self._value = None
+        self._downstream = set()
+        self._func = func
+        self._args = args
+        self._kwargs = kwargs
+
+        for i in self._args:
+            if isinstance(i, LazyHandle):
+                i._downstream.add(weakref.ref(self))
+
+    def __del__(self):
+        for i in self._args:
+            if isinstance(i, LazyHandle):
+                i._downstream.remove(weakref.ref(self))
+
+    def reset(self, value=None):
+        if self._value != value:
+            self._value = value
+            for i in self._downstream:
+                i().reset()
+
+    @property
+    def value(self):
+        if self._value is None:
+            self._value = self._func(*map(self._unwrap_handle, self._args),
+                                     **self._kwargs)
+        return self._value
+
+    @staticmethod
+    def _unwrap_handle(handle):
+        if isinstance(handle, LazyHandle):
+            return handle.value
+        else:
+            return handle
+
+
+def LazyRoot(value=None):
+    result = LazyHandle(lambda: None)
+    result.reset(value)
+    return result
