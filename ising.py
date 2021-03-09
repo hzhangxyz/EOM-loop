@@ -17,6 +17,7 @@
 #
 
 import random
+
 import numpy as np
 import TAT
 
@@ -46,13 +47,13 @@ def get_H(n):
     block[0, 1, 0, 1] = -1
     block[1, 0, 1, 0] = -1
     block[1, 1, 1, 1] = 1
-    # block[1, 0, 0, 1] = 2
-    # block[0, 1, 1, 0] = 2
+    block[1, 0, 0, 1] = 2
+    block[0, 1, 1, 0] = 2
     return result
 
 
 class Site:
-    delta = 0.0001
+    delta = 1e-6
 
     def __init__(self, n, r, omega, phi, psi):
         self.n = n
@@ -455,54 +456,114 @@ class Chain:
         term_2 = partialpsipsi * (2 * complex(psiHpsi) / (complex(psipsi)**2))
         return term_1 - term_2
 
-    def get_energy(self):
+    def energy(self):
         psiHpsi = sum(self.get_psiHpsi(i) for i in range(1, self.length))
         psipsi = self.get_psiHpsi(0)
-        return (complex(psiHpsi) / complex(psipsi)).real / self.length
+        result = (complex(psiHpsi) / complex(psipsi)).real / self.length
+        """
+        print("E",
+              complex(psiHpsi).real / self.length,
+              complex(psipsi).real, result)
+        """
+        return result
 
-    def gradient_descent_once(self, delta):
-        gradients = [[self.get_gradient(i, j) for j in range(self.depth)]
-                     for i in range(self.length)]
+    def parameter_gradient(self, i, j, gradient):
+        site = self.get_site(length=i, depth=j)
+        expand_map = {}
+        if j == 0:
+            expand_map["D"] = (0, 2)
+        if i == 0 and j == 0:
+            expand_map["L"] = (0, 2)
+        if i == self.length - 1 and j == self.depth - 1:
+            expand_map["R"] = (self.get_half_parity(), 2)
+        if expand_map:
+            gradient = gradient.expand(expand_map)
+        names = {(i, i) for i in "UDLR"}
+        return (complex(site.d_r.value.contract(gradient, names)).real,
+                complex(site.d_omega.value.contract(gradient, names)).real)
+
+    def psipsi_gradient(self):
+        gs = []
+        for i in range(self.length):
+            for j in range(self.depth):
+                p_r, p_omega = self.parameter_gradient(
+                    i, j, self.hole_at(0, i, j - self.depth))
+                gs.append(p_r)
+                gs.append(p_omega)
+        return gs
+
+    def get_psi(self):
+        result = Tensor(1)
+        for i in range(self.length):
+            for j in range(self.depth):
+                site = self.get_site(length=i, depth=j).U.value
+                if j == 0:
+                    site = site.shrink({"D": 0})
+                if i == 0 and j == 0:
+                    site = site.shrink({"L": 0})
+                if i == self.length - 1 and j == self.depth - 1:
+                    site = site.shrink({"R": self.get_half_parity()})
+                result = result.contract(site.edge_rename({"R": "R" + str(j)}),
+                                         {("U", "D"), ("R" + str(j), "L")})
+                result = result.edge_rename({
+                    "L": "L" + str(j),
+                    "R": "R" + str(j)
+                })
+            result = result.edge_rename({"U": "P" + str(i)})
+        result = result.trace({("L" + str(j + 1), "R" + str(j))
+                               for j in range(self.depth)})
+        return result
+
+    def gradient(self):
+        gs = []
+        for i in range(self.length):
+            for j in range(self.depth):
+                p_r, p_omega = self.parameter_gradient(i, j,
+                                                       self.get_gradient(i, j))
+                gs.append(p_r)
+                gs.append(p_omega)
+        return gs
+
+    def get_value(self):
+        xs = []
         for i in range(self.length):
             for j in range(self.depth):
                 site = self.get_site(length=i, depth=j)
-                gradient = gradients[i][j]
-                expand_map = {}
-                if j == 0:
-                    expand_map["D"] = (0, 2)
-                if i == 0 and j == 0:
-                    expand_map["L"] = (0, 2)
-                if i == self.length - 1 and j == self.depth - 1:
-                    expand_map["R"] = (self.get_half_parity(), 2)
-                if expand_map:
-                    gradient = gradient.expand(expand_map)
-                self.update_tensor(site, gradient, delta)
+                xs.append(site.r.value)
+                xs.append(site.omega.value)
+        return xs
 
-    @staticmethod
-    def update_tensor(site, gradient, delta):
-        if False:
-            site.U.reset(site.U.value - gradient * delta)
-        else:
-            names = {(i, i) for i in "UDLR"}
-            d_r = complex(site.d_r.value.contract(gradient, names)).real
-            d_omega = complex(site.d_omega.value.contract(gradient,
-                                                          names)).real
-            site.r.reset(site.r.value - d_r * delta)
-            site.omega.reset(site.omega.value - d_omega * delta)
+    def set_value(self, xs):
+        index = 0
+        for i in range(self.length):
+            for j in range(self.depth):
+                site = self.get_site(length=i, depth=j)
+                site.r.reset(xs[index])
+                index += 1
+                site.omega.reset(xs[index])
+                index += 1
+        return self
 
 
+# main
 def main():
-    for l in range(3, 13):
-        c = Chain(cutoff=2, length=l, depth=2)
+    import sys
 
-        energy = c.get_energy()
-        while True:
-            c.gradient_descent_once(1)
-            energy_new = c.get_energy()
-            if abs(energy_new - energy) < 0.001:
-                break
-            energy = energy_new
-        print(energy)
+    with open(sys.argv[1], "r") as file:
+        config = [i for i in file.read().split()]
+
+    chain = Chain(cutoff=2, length=int(config[0]), depth=int(config[1]))
+
+    if int(config[2]) != 0:
+        chain.set_value([float(i) for i in config[3:]])
+        print("READ:", chain.energy())
+    else:
+        print("NOT READ")
+
+    import opt_tools
+
+    getattr(opt_tools, sys.argv[2])(chain, sys.argv[1], sys.argv[3:])
 
 
-main()
+if __name__ == "__main__":
+    main()

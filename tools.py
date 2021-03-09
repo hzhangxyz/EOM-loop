@@ -153,16 +153,13 @@ class LazyHandle:
             if isinstance(i, LazyHandle):
                 i._downstream.add(weakref.ref(self))
 
-    def __del__(self):
-        for i in self._args:
-            if isinstance(i, LazyHandle):
-                i._downstream.remove(weakref.ref(self))
-
     def reset(self, value=None):
         if self._value != value:
             self._value = value
             for i in self._downstream:
-                i().reset()
+                # 也可以选择再__del__中去掉，但是不知道为什么，对于global var会有问题
+                if i():
+                    i().reset()
 
     @property
     def value(self):
