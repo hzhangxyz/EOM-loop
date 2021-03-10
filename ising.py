@@ -533,12 +533,21 @@ class Chain:
                 xs.append(site.omega.value)
         return xs
 
+    @staticmethod
+    def check_r(r):
+        if r > +2:
+            return +2
+        elif r < -2:
+            return -2
+        else:
+            return r
+
     def set_value(self, xs):
         index = 0
         for i in range(self.length):
             for j in range(self.depth):
                 site = self.get_site(length=i, depth=j)
-                site.r.reset(xs[index])
+                site.r.reset(self.check_r(xs[index]))
                 index += 1
                 site.omega.reset(xs[index])
                 index += 1
