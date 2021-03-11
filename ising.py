@@ -292,10 +292,18 @@ class Chain:
             else:
                 if index_depth < 0:
                     if index_depth == -self.depth:
-                        return tools.LazyHandle(L_ops.down_edge,
-                                                former,
-                                                site,
-                                                r_name=r_name)
+                        if index_depth == -1 and index_length == self.length - 1:
+                            return tools.LazyHandle(
+                                L_ops.down_part_tail_depth_1,
+                                former,
+                                site,
+                                r_name=r_name,
+                                parity=self.get_half_parity())
+                        else:
+                            return tools.LazyHandle(L_ops.down_edge,
+                                                    former,
+                                                    site,
+                                                    r_name=r_name)
                     else:
                         if index_depth == -1 and index_length == self.length - 1:
                             return tools.LazyHandle(
@@ -311,10 +319,18 @@ class Chain:
                                                     r_name=r_name)
                 else:
                     if index_depth == +self.depth:
-                        return tools.LazyHandle(L_ops.up_edge,
-                                                former,
-                                                site,
-                                                r_name=r_name)
+                        if index_depth == +1 and index_length == self.length - 1:
+                            return tools.LazyHandle(
+                                L_ops.up_part_tail_depth_1,
+                                former,
+                                site,
+                                r_name=r_name,
+                                parity=self.get_half_parity())
+                        else:
+                            return tools.LazyHandle(L_ops.up_edge,
+                                                    former,
+                                                    site,
+                                                    r_name=r_name)
                     else:
                         if index_depth == +1 and index_length == self.length - 1:
                             return tools.LazyHandle(
@@ -362,7 +378,13 @@ class Chain:
             l_name = self.get_name("L", index_depth)
             if index_length == self.length - 1:
                 if index_depth > 0:
-                    if index_depth == +self.depth:
+                    if index_depth == +self.depth == +1:
+                        return tools.LazyHandle(R_ops.right_up_corner_depth_1,
+                                                site,
+                                                l_name=l_name,
+                                                r_name=r_name,
+                                                parity=self.get_half_parity())
+                    elif index_depth == +self.depth:
                         return tools.LazyHandle(R_ops.right_up_corner,
                                                 site,
                                                 l_name=l_name,
@@ -381,7 +403,15 @@ class Chain:
                                                 l_name=l_name,
                                                 r_name=r_name)
                 else:
-                    if index_depth == -self.depth:
+                    if index_depth == -self.depth == -1:
+                        return tools.LazyHandle(
+                            R_ops.right_down_corner_depth_1,
+                            former,
+                            site,
+                            l_name=l_name,
+                            r_name=r_name,
+                            parity=self.get_half_parity())
+                    elif index_depth == -self.depth:
                         return tools.LazyHandle(R_ops.right_down_corner,
                                                 former,
                                                 site,

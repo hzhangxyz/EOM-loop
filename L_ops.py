@@ -68,6 +68,10 @@ def down_part_tail(former, site, *, r_name, parity):
                            })
 
 
+def down_part_tail_depth_1(former, site, *, r_name, parity):
+    return former.contract(site.shrink({"R": parity, "D": 0}), {(r_name, "L")})
+
+
 def up_edge(former, site, *, r_name):
     return former.contract(site.shrink({"D": 0}),
                            {("U", "U"),
@@ -89,3 +93,10 @@ def up_part_tail(former, site, *, r_name, parity):
                                "D": "U",
                                "R": r_name
                            })
+
+
+def up_part_tail_depth_1(former, site, *, r_name, parity):
+    return former.contract(site.shrink({
+        "R": parity,
+        "D": 0
+    }), {("U", "U"), (r_name, "L")})

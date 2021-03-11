@@ -27,6 +27,16 @@ def right_up_corner(site, *, l_name, r_name):
     })
 
 
+def right_up_corner_depth_1(site, *, l_name, r_name, parity):
+    return site.shrink({
+        "D": 0,
+        "R": parity
+    }).edge_rename({
+        "L": l_name,
+        "U": "D"
+    })
+
+
 def right_down_corner(former, site, *, l_name, r_name):
     return former.contract(site.shrink({"D": 0}), {("D", "U")}).edge_rename({
         "L":
@@ -34,6 +44,13 @@ def right_down_corner(former, site, *, l_name, r_name):
         "R":
         r_name
     })
+
+
+def right_down_corner_depth_1(former, site, *, l_name, r_name, parity):
+    return former.contract(site.shrink({
+        "D": 0,
+        "R": parity
+    }), {("D", "U")}).edge_rename({"L": l_name})
 
 
 def right_edge_up_part(former, site, *, l_name, r_name):
