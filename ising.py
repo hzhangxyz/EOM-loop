@@ -104,6 +104,9 @@ class Chain:
             for j in range(depth)
         ] for i in range(length)]
         self.hamiltonian = get_H(cutoff)
+        self.projector = Tensor(["I", "O"], [cutoff, cutoff]).zero()
+        self.projector[{"I": 0, "O": 0}] = 1
+        self.projector[{"I": 1, "O": 1}] = 1
 
         self.aux = {}
 
@@ -243,14 +246,14 @@ class Chain:
         if index_depth == 0:
             former = self.aux["L", index_hamiltonian, index_length, -1]
             if index_hamiltonian == 0:
-                return former
+                return tools.LazyHandle(L_ops.project, former, self.projector)
             if index_length == index_hamiltonian - 1:
                 return tools.LazyHandle(L_ops.contract_hamiltonian, former,
                                         self.hamiltonian)
             elif index_length == index_hamiltonian:
                 return tools.LazyHandle(L_ops.trace_hamiltonian, former)
             else:
-                return former
+                return tools.LazyHandle(L_ops.project, former, self.projector)
         else:
             if index_depth == -self.depth:
                 if index_length == 0:
@@ -353,7 +356,7 @@ class Chain:
         if index_depth == 0:
             former = self.aux["R", index_hamiltonian, index_length, +1]
             if index_hamiltonian == 0:
-                return former
+                return tools.LazyHandle(R_ops.project, former, self.projector)
             if index_length == index_hamiltonian:
                 return tools.LazyHandle(R_ops.hole_hamiltonian, former,
                                         self.cutoff)
@@ -361,7 +364,7 @@ class Chain:
                 return tools.LazyHandle(R_ops.contract_hamiltonian, former,
                                         self.hamiltonian)
             else:
-                return former
+                return tools.LazyHandle(R_ops.project, former, self.projector)
         else:
             if index_depth == self.depth:
                 if index_length == self.length - 1:
@@ -501,11 +504,11 @@ class Chain:
         site = self.get_site(length=i, depth=j)
         expand_map = {}
         if j == 0:
-            expand_map["D"] = (0, 2)
+            expand_map["D"] = (0, self.cutoff)
         if i == 0 and j == 0:
-            expand_map["L"] = (0, 2)
+            expand_map["L"] = (0, self.cutoff)
         if i == self.length - 1 and j == self.depth - 1:
-            expand_map["R"] = (self.get_half_parity(), 2)
+            expand_map["R"] = (self.get_half_parity(), self.cutoff)
         if expand_map:
             gradient = gradient.expand(expand_map)
         names = {(i, i) for i in "UDLR"}

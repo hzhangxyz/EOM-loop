@@ -2,6 +2,10 @@
 # -*- coding: utf-8 -*-
 
 
+def project(former, projector):
+    return former.contract(projector, {("U", "I")}).edge_rename({"O": "U"})
+
+
 def contract_hamiltonian(former, hamiltonian):
     """
     处理哈密顿量的前半部分

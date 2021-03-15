@@ -2,6 +2,10 @@
 # -*- coding: utf-8 -*-
 
 
+def project(former, projector):
+    return former.contract(projector, {("D", "O")}).edge_rename({"I": "D"})
+
+
 def hole_hamiltonian(former, n):
     # return former.contract(hamiltonian, {("D", "O2")}).edge_rename({"I2": "D"})
     return former.edge_rename({
