@@ -221,3 +221,30 @@ def sample_line_search(chain, file_name, config):
     else:
         while True:
             update_once()
+
+def scipy_optimize(chain, file_name, config):
+    method = config[0]
+
+    import numpy as np
+    from scipy.optimize import minimize
+
+    def get_e_and_g(x):
+        chain.set_value(x)
+        e = chain.energy()
+        g = chain.gradient()
+        return e, np.array(g)
+
+    def callback_function(x):
+        print(chain.energy())
+        with open(file_name, "w") as file:
+            print(chain.length, chain.depth, 1, file=file)
+            print(*chain.get_value(), file=file)
+            print(chain.energy(), file=file)
+
+    minimize(get_e_and_g,
+             chain.get_value(),
+             method=method,
+             jac=True,
+             options={"disp":True},
+             tol=float(config[1]),
+             callback=callback_function)
