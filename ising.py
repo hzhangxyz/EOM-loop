@@ -548,13 +548,19 @@ class Chain:
         return result
 
     def gradient(self):
+        x = self.get_value()
+        index = 0
         gs = []
         for i in range(self.length):
             for j in range(self.depth):
                 p_r, p_omega = self.parameter_gradient(i, j,
                                                        self.get_gradient(i, j))
-                gs.append(p_r)
+                if abs(x[index]) >= 2:
+                    gs.append(0)
+                else:
+                    gs.append(p_r)
                 gs.append(p_omega)
+                index += 2
         return gs
 
     def get_value(self):
