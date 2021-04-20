@@ -2,6 +2,33 @@
 # -*- coding: utf-8 -*-
 
 
+def axis_descent(chain, file_name, config):
+
+    delta = float(config[0])
+    def update_once():
+        old_E = chain.energy()
+        for i in range(chain.depth*2):
+            for d in [-delta, +delta]:
+                xs = chain.get_value()
+                xss = xs[:]
+                xss[i] += d
+                new_E = chain.set_value(xss).energy()
+                if new_E > old_E:
+                    chain.set_value(xs)
+        with open(file_name, "w") as file:
+            #print(chain.length, chain.depth, 1, file=file)
+            print(chain.depth, 1, file=file)
+            print(*chain.get_value(), file=file)
+            print(chain.energy(), file=file)
+            print(chain.energy())
+
+    if len(config) != 1:
+        count = int(config[1])
+        for _ in range(count):
+            update_once()
+    else:
+        while True:
+            update_once()
 def random_gradient(chain, file_name, config):
     import random
 
@@ -22,7 +49,8 @@ def random_gradient(chain, file_name, config):
         ])
         print(chain.energy())
         with open(file_name, "w") as file:
-            print(chain.length, chain.depth, 1, file=file)
+            #print(chain.length, chain.depth, 1, file=file)
+            print(chain.depth, 1, file=file)
             print(*chain.get_value(), file=file)
             print(chain.energy(), file=file)
 
@@ -114,7 +142,8 @@ def line_search(chain, file_name, config):
         e_now = chain.energy()
         print(e_now)
         with open(file_name, "w") as file:
-            print(chain.length, chain.depth, 1, file=file)
+            print(chain.depth, 1, file=file)
+            #print(chain.length, chain.depth, 1, file=file)
             print(*chain.get_value(), file=file)
             print(chain.energy(), file=file)
 
@@ -237,7 +266,8 @@ def scipy_optimize(chain, file_name, config):
     def callback_function(x):
         print(chain.energy())
         with open(file_name, "w") as file:
-            print(chain.length, chain.depth, 1, file=file)
+            #print(chain.length, chain.depth, 1, file=file)
+            print(chain.depth, 1, file=file)
             print(*chain.get_value(), file=file)
             print(chain.energy(), file=file)
 
