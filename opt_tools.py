@@ -15,12 +15,9 @@ def axis_descent(chain, file_name, config):
                 new_E = chain.set_value(xss).energy()
                 if new_E > old_E:
                     chain.set_value(xs)
-        with open(file_name, "w") as file:
-            #print(chain.length, chain.depth, 1, file=file)
-            print(chain.depth, 1, file=file)
-            print(*chain.get_value(), file=file)
-            print(chain.energy(), file=file)
-            print(chain.energy())
+
+        chain.save_to_file(file_name)
+        print(chain.energy())
 
     if len(config) != 1:
         count = int(config[1])
@@ -29,6 +26,8 @@ def axis_descent(chain, file_name, config):
     else:
         while True:
             update_once()
+
+
 def random_gradient(chain, file_name, config):
     import random
 
@@ -47,12 +46,9 @@ def random_gradient(chain, file_name, config):
             x - delta * random.random() * sign(g)
             for x, g in zip(chain.get_value(), chain.gradient())
         ])
+
+        chain.save_to_file(file_name)
         print(chain.energy())
-        with open(file_name, "w") as file:
-            #print(chain.length, chain.depth, 1, file=file)
-            print(chain.depth, 1, file=file)
-            print(*chain.get_value(), file=file)
-            print(chain.energy(), file=file)
 
     if len(config) != 1:
         count = int(config[1])
@@ -81,10 +77,7 @@ def normal_gradient(chain, file_name, config):
             print(e)
             print("!!!")
             exit(-1)
-        with open(file_name, "w") as file:
-            print(chain.length, chain.depth, 1, file=file)
-            print(*chain.get_value(), file=file)
-            print(chain.energy(), file=file)
+        chain.save_to_file(file_name)
 
     if len(config) != 1:
         count = int(config[1])
@@ -94,6 +87,22 @@ def normal_gradient(chain, file_name, config):
         while True:
             update_once()
 
+def calculate_energy(chain, file_name, config):
+    chain.save_to_file(file_name)
+
+def energy_calculator(chain, file_name, config):
+    with open(file_name, "w") as file:
+        x = float(config[0])
+        y = float(config[1])
+        print(x, y)
+        i = -4
+        while i <= +4:
+            j = -4
+            while j <= +4:
+                chain.set_value([x, y, i, j])
+                print(i, j, chain.energy(), file=file)
+                j += 0.1
+            i += 0.1
 
 def line_search(chain, file_name, config):
     from math import sqrt
@@ -141,11 +150,7 @@ def line_search(chain, file_name, config):
         line_search_once(0, begin, e_begin, end, e_end)
         e_now = chain.energy()
         print(e_now)
-        with open(file_name, "w") as file:
-            print(chain.depth, 1, file=file)
-            #print(chain.length, chain.depth, 1, file=file)
-            print(*chain.get_value(), file=file)
-            print(chain.energy(), file=file)
+        print(chain.energy())
 
     if len(config) != 2:
         count = int(config[2])
@@ -251,6 +256,7 @@ def sample_line_search(chain, file_name, config):
         while True:
             update_once()
 
+
 def scipy_optimize(chain, file_name, config):
     method = config[0]
 
@@ -265,11 +271,7 @@ def scipy_optimize(chain, file_name, config):
 
     def callback_function(x):
         print(chain.energy())
-        with open(file_name, "w") as file:
-            #print(chain.length, chain.depth, 1, file=file)
-            print(chain.depth, 1, file=file)
-            print(*chain.get_value(), file=file)
-            print(chain.energy(), file=file)
+        chain.save_to_file(file_name)
 
     minimize(get_e_and_g,
              chain.get_value(),

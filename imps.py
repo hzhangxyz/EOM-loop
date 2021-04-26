@@ -16,6 +16,8 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
+import os
+import sys
 import random
 import TAT
 import tools
@@ -33,15 +35,34 @@ def get_U(n, r, omega):
 def get_H(n):
     result = Tensor(["I1", "I2", "O1", "O2"], [n, n, n, n]).zero()
     block = result.block[{}]
-    block[0, 0, 0, 0] = 2
-    block[0, 1, 0, 1] = 2
-    block[1, 0, 1, 0] = -2
-    block[1, 1, 1, 1] = -2
-    block[1, 1, 0, 0] = 1
-    block[1, 0, 0, 1] = 1
-    block[0, 1, 1, 0] = 1
-    block[0, 0, 1, 1] = 1
-    return result
+    name = os.environ["Hamiltonian"]
+    if name == "Ising":
+        "g Sz + SxSx"
+        g = float(os.environ["IsingG"])
+        block[0, 0, 0, 0] = g/2.
+        block[0, 1, 0, 1] = g/2.
+        block[1, 0, 1, 0] = -g/2.
+        block[1, 1, 1, 1] = -g/2.
+        block[1, 1, 0, 0] = 1/4.
+        block[1, 0, 0, 1] = 1/4.
+        block[0, 1, 1, 0] = 1/4.
+        block[0, 0, 1, 1] = 1/4.
+    elif name == "Heisenberg":
+        block[0, 0, 0, 0] = 1/4.
+        block[0, 1, 0, 1] = -1/4.
+        block[1, 0, 1, 0] = -1/4.
+        block[1, 1, 1, 1] = 1/4.
+        block[1, 0, 0, 1] = 2/4.
+        block[0, 1, 1, 0] = 2/4.
+    elif name == "XY":
+        block[1, 0, 0, 1] = 2/4.
+        block[0, 1, 1, 0] = 2/4.
+    else:
+        raise RuntimeError("Unknown Hamiltonian")
+    J = 1
+    if "J" in os.environ:
+        J = float(os.environ["J"])
+    return result * J
 
 class Site:
     delta = 1e-6
@@ -77,7 +98,7 @@ class IMPS():
         for i in range(1, depth):
             self.env_half = tools.LazyHandle(lambda E, U, index: E.contract(U.edge_rename(IMPS._rename_map(index)), {("U", "D")}), self.env_half, self.site[i].U, i-depth)
 
-        half_env_map = {"L"+IMPS._number_to_string(-i):"L"+IMPS._number_to_string(i) for i in range(1, 1+depth)} | {"R"+IMPS._number_to_string(-i):"R"+IMPS._number_to_string(i) for i in range(1, 1+depth)}
+        half_env_map = {**{"L"+IMPS._number_to_string(-i):"L"+IMPS._number_to_string(i) for i in range(1, 1+depth)}, **{"R"+IMPS._number_to_string(-i):"R"+IMPS._number_to_string(i) for i in range(1, 1+depth)}}
         another_half_env = tools.LazyHandle(lambda h: h.edge_rename(half_env_map), self.env_half)
         self.env = tools.LazyHandle(lambda a, b: a.contract(b, {("U", "U")}), self.env_half, another_half_env)
 
@@ -166,17 +187,28 @@ class IMPS():
         self.set_value(xs)
         return gradient
 
-import sys
+    def save_to_file(self, file_name):
+        with open(file_name, "w") as file:
+            print(self.depth, 1, file=file)
+            print(*self.get_value(), file=file)
+            print(self.energy(), file=file)
 
-with open(sys.argv[1], "r") as file:
-    config = [i for i in file.read().split()]
+    @staticmethod
+    def read_from_file(file_name):
+        with open(file_name, "r") as file:
+            config = [i for i in file.read().split()]
 
-    imps = IMPS(depth=int(config[0]), cutoff=2)
+            imps = IMPS(depth=int(config[0]), cutoff=2)
 
-    if int(config[1]) != 0:
-        imps.set_value([float(i) for i in config[2:]])
-        print("READ:", imps.energy())
-    else:
-        print("NOT READ")
-    import opt_tools
-    getattr(opt_tools, sys.argv[2])(imps, sys.argv[1], sys.argv[3:])
+            if int(config[1]) != 0:
+                imps.set_value([float(i) for i in config[2:]])
+                print("Continue Running:", imps.energy())
+            else:
+                print("Initialized State")
+
+            return imps
+
+imps = IMPS.read_from_file(sys.argv[1])
+
+import opt_tools
+getattr(opt_tools, sys.argv[2])(imps, sys.argv[1], sys.argv[3:])
