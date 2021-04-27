@@ -167,12 +167,12 @@ struct matrix_U {
       // get_element(0, 0, ..., ...) --adding 2-->  get_element(0, 1, ..., ...);
       for (auto i = 1; i < c; i++) {
          mv(n * n, adding_2.data(), &get_element(0, i - 1, 0, 0), &get_element(0, i, 0, 0));
-         norm_column(0, i);
+         // norm_column(0, i);
       }
       for (auto j = 1; j < c; j++) {
          for (auto i = 0; i < c; i++) {
             mv(n * n, adding_1.data(), &get_element(j - 1, i, 0, 0), &get_element(j, i, 0, 0));
-            norm_column(j, i);
+            // norm_column(j, i);
          }
       }
    }
