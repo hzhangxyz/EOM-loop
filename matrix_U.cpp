@@ -38,6 +38,12 @@ void mv(int n, const complex* A, const complex* x, complex* y) {
    }
 }
 
+void scal(int n, complex* A, complex k) {
+   for (auto i = 0; i < n; i++) {
+      A[i] *= k;
+   }
+}
+
 /**
  * 描述EOM loop中U门的矩阵
  */
@@ -167,12 +173,14 @@ struct matrix_U {
       // get_element(0, 0, ..., ...) --adding 2-->  get_element(0, 1, ..., ...);
       for (auto i = 1; i < c; i++) {
          mv(n * n, adding_2.data(), &get_element(0, i - 1, 0, 0), &get_element(0, i, 0, 0));
+         scal(n * n, &get_element(0, i, 0, 0), 1 / std::sqrt(i));
          // norm_column(0, i);
       }
       for (auto j = 1; j < c; j++) {
          for (auto i = 0; i < c; i++) {
             mv(n * n, adding_1.data(), &get_element(j - 1, i, 0, 0), &get_element(j, i, 0, 0));
             // norm_column(j, i);
+            scal(n * n, &get_element(j, i, 0, 0), 1 / std::sqrt(j));
          }
       }
    }
