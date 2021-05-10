@@ -12,4 +12,5 @@ else()
 endif()
 
 pybind11_add_module(matrix_U matrix_U.cpp)
+target_link_libraries(matrix_U PRIVATE "-lblas")
 pybind11_add_module(matrix_A matrix_A.cpp)

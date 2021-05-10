@@ -24,6 +24,11 @@
 using complex = std::complex<double>;
 const complex imag_unit = {0, 1};
 
+// y = alpha A x + beta y
+extern "C" {
+void zgemv_(char* TRANS, int* M, int* N, complex* ALPHA, complex* A, int* LDA, complex* X, int* INCX, complex* BETA, complex* Y, int* INCY);
+}
+
 /**
  * 矩阵乘以向量
  *
@@ -49,7 +54,6 @@ void scal(int n, complex* A, complex k) {
  */
 struct matrix_U {
    int n; // 矩阵截断
-   int c; // 物理截断
    std::vector<complex> matrix;
    std::vector<complex> adding_1;
    std::vector<complex> adding_2;
@@ -68,7 +72,7 @@ struct matrix_U {
    complex mu2;
    complex nu2;
 
-   matrix_U(int _n, int _c, double _r, double _omega, double _phi, double _psi) : n(_n), c(_c), r(_r), omega(_omega), phi(_phi), psi(_psi) {
+   matrix_U(int _n, double _r, double _omega, double _phi, double _psi) : n(_n), r(_r), omega(_omega), phi(_phi), psi(_psi) {
       generate_parameter();
 
       matrix.resize(n * n * n * n);
@@ -98,15 +102,15 @@ struct matrix_U {
       std::vector<complex> a_1(n * n * n * n);
       std::vector<complex> a_2(n * n * n * n);
       // a_1_dagger
-      for (auto p2 = 0; p2 < c; p2++) {
-         for (auto i1 = 0; i1 < c - 1; i1++) {
+      for (auto p2 = 0; p2 < n; p2++) {
+         for (auto i1 = 0; i1 < n - 1; i1++) {
             auto o1 = i1 + 1;
             get_element(o1, p2, i1, p2, &a_1) = get_element(i1, p2, o1, p2, &a_1_dagger) = std::sqrt(o1);
          }
       }
       // a_2_dagger
-      for (auto p1 = 0; p1 < c; p1++) {
-         for (auto i2 = 0; i2 < c - 1; i2++) {
+      for (auto p1 = 0; p1 < n; p1++) {
+         for (auto i2 = 0; i2 < n - 1; i2++) {
             auto o2 = i2 + 1;
             get_element(p1, o2, p1, i2, &a_2) = get_element(p1, i2, p1, o2, &a_2_dagger) = std::sqrt(o2);
          }
@@ -163,24 +167,32 @@ struct matrix_U {
    }
 
    void generate_00() {
-      for (auto i = 0; i < c; i++) {
+      for (auto i = 0; i < n; i++) {
          get_element(0, 0, i, i) = std::pow(-std::exp(-imag_unit * phi) * std::tanh(r / 2.), i) / std::cosh(r / 2.);
       }
-      norm_column(0, 0);
+      // norm_column(0, 0);
    }
 
    void generate_other() {
+      char trans = 'N';
+      int N = n * n;
+      int one = 1;
+      complex zero = 0;
       // get_element(0, 0, ..., ...) --adding 2-->  get_element(0, 1, ..., ...);
-      for (auto i = 1; i < c; i++) {
-         mv(n * n, adding_2.data(), &get_element(0, i - 1, 0, 0), &get_element(0, i, 0, 0));
-         scal(n * n, &get_element(0, i, 0, 0), 1 / std::sqrt(i));
+      for (auto i = 1; i < n; i++) {
+         complex scal = 1 / std::sqrt(i);
+         zgemv_(&trans, &N, &N, &scal, adding_2.data(), &N, &get_element(0, i - 1, 0, 0), &one, &zero, &get_element(0, i, 0, 0), &one);
+         // mv(n * n, adding_2.data(), &get_element(0, i - 1, 0, 0), &get_element(0, i, 0, 0));
+         // scal(n * n, &get_element(0, i, 0, 0), 1 / std::sqrt(i));
          // norm_column(0, i);
       }
-      for (auto j = 1; j < c; j++) {
-         for (auto i = 0; i < c; i++) {
-            mv(n * n, adding_1.data(), &get_element(j - 1, i, 0, 0), &get_element(j, i, 0, 0));
+      for (auto j = 1; j < n; j++) {
+         for (auto i = 0; i < n; i++) {
+            complex scal = 1 / std::sqrt(j);
+            zgemv_(&trans, &N, &N, &scal, adding_1.data(), &N, &get_element(j - 1, i, 0, 0), &one, &zero, &get_element(j, i, 0, 0), &one);
+            // mv(n * n, adding_1.data(), &get_element(j - 1, i, 0, 0), &get_element(j, i, 0, 0));
             // norm_column(j, i);
-            scal(n * n, &get_element(j, i, 0, 0), 1 / std::sqrt(j));
+            // scal(n * n, &get_element(j, i, 0, 0), 1 / std::sqrt(j));
          }
       }
    }
@@ -194,9 +206,8 @@ namespace py = pybind11;
 PYBIND11_MODULE(matrix_U, matrix_U_m) {
    matrix_U_m.doc() = "generate matrix U for EOM loop";
    py::class_<matrix_U>(matrix_U_m, "matrix_U", "U matrix for EOM loop, dimension is [I1, I2, O1, O2]", py::buffer_protocol())
-         .def(py::init<>([](int n, int c, double r, double omega, double phi, double psi) { return matrix_U(n, c, r, omega, phi, psi); }),
-              py::arg("cutoff_matrix"),
-              py::arg("cutoff_phisics"),
+         .def(py::init<>([](int n, double r, double omega, double phi, double psi) { return matrix_U(n, r, omega, phi, psi); }),
+              py::arg("cutoff"),
               py::arg("r"),
               py::arg("omega"),
               py::arg("phi"),

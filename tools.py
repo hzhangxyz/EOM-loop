@@ -28,8 +28,10 @@ def tensor_U(n, c, r, omega, phi, psi):
     """
     根据矩阵截断, 物理截断, r, omega, phi, psi创建U矩阵
     """
-    result = Tensor(["I1", "I2", "O1", "O2"], [n, n, n, n])
-    result.block[{}] = matrix_U(n, c, r, omega, phi, psi)
+    fake_cut = 3 * c
+    data = np.array(matrix_U(fake_cut, r, omega, phi, psi))
+    result = Tensor(["I1", "I2", "O1", "O2"], [n, n, n, n]).zero()
+    result.block[{}][:c, :c, :c, :c] = data[:c, :c, :c, :c]
     return result
 
 
