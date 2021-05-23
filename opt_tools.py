@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-
 def axis_descent(chain, file_name, config):
 
     delta = float(config[0])
@@ -256,6 +255,41 @@ def sample_line_search(chain, file_name, config):
         while True:
             update_once()
 
+def beyesian_opt(chain, file_name, config):
+    from skopt import gp_minimize
+    from skopt.learning import GaussianProcessRegressor
+
+    def get_energy(x):
+        chain.set_value(x)
+        e = chain.energy()
+        return e
+
+    x0 = chain.get_value()
+
+    def callback_function(state, best=[[], +1000]):
+        e = chain.set_value(state.x).energy()
+        if e < best[1]:
+            best[1] = e
+            best[0] = state.x
+        print(chain.energy())
+        chain.set_value(best[0]).save_to_file(file_name)
+
+    space = [(-2., +2.) if i % 2 == 0 else (-6., +6.) for i, j in enumerate(x0)]
+
+    res = gp_minimize(get_energy,
+                      space,
+                      x0=x0,
+                      # base_estimator = GaussianProcessRegressor(),
+                      acq_func="EI",
+                      n_calls=500,
+                      n_initial_points=100,
+                      callback=callback_function)
+    callback_function(res)
+
+    from skopt.plots import plot_convergence
+    plot_convergence(res)
+    from matplotlib import pyplot as plt
+    plt.show()
 
 def scipy_optimize(chain, file_name, config):
     method = config[0]
