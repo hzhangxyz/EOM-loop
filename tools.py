@@ -44,6 +44,88 @@ def tensor_A(n, c, k, eta):
     result.block[{}] = matrix_A(n, c, k, eta)
     return result
 
+def two_to_one(down, up, cut, endtag_down="", endtag_up=""):
+    A = down.copy()
+    B = up.copy()
+
+    length = len(A)
+    A[0] = A[0].edge_rename({"L": "L"+endtag_down})
+    A[length-1] = A[length-1].edge_rename({"R": "R"+endtag_down})
+    B[0] = B[0].edge_rename({"L": "L"+endtag_up})
+    B[length-1] = B[length-1].edge_rename({"R": "R"+endtag_up})
+
+    C = []
+    for a, b in zip(A, B):
+        a_l = TAT.Name("L") in a.name
+        a_r = TAT.Name("R") in a.name
+        a = a.edge_rename({"L": "AL","R":"AR"})
+
+        b_l = TAT.Name("L") in b.name
+        b_r = TAT.Name("R") in b.name
+        b = b.edge_rename({"L": "BL","R":"BR"})
+
+        c = a.contract(b, {("U", "D")})
+        merge = {}
+        rename = {}
+        if a_l and b_l:
+            merge["L"] = ["AL", "BL"]
+        elif a_l:
+            rename["AL"] = "L"
+        elif b_l:
+            rename["BL"] = "L"
+        if a_r and b_r:
+            merge["R"] = ["AR", "BR"]
+        elif a_r:
+            rename["AR"] = "R"
+        elif b_r:
+            rename["BR"] = "R"
+        if merge:
+            c = c.merge_edge(merge)
+        if rename:
+            c = c.edge_rename(rename)
+        C.append(c)
+
+    for i in range(length - 2):
+        Q, R = C[i].qr('r', {"R"}, "R", "L")
+        C[i] = Q
+        C[i+1] = C[i+1].contract(R, {("L", "R")})
+        # last one is l-2-1+1=l-2, chain end is l-1, it is ok
+
+    parameter = 1.0
+    for i in reversed(range(length-1)):
+        tensor_l = C[i]
+        tensor_r = C[i+1]
+        name_l = {j for j in tensor_l.name if j != "R"}
+        name_r = {j for j in tensor_r.name if j != "L"}
+        map_l_1 = {j: "L-" + str(j) for j in name_l}
+        map_r_1 = {j: "R-" + str(j) for j in name_r}
+        map_l_2 = {"L-" + str(j):j for j in name_l}
+        map_r_2 = {"R-" + str(j):j for j in name_r}
+
+        big = tensor_l.edge_rename(map_l_1).contract(tensor_r.edge_rename(map_r_1), {("R", "L")})
+        u, s, v = big.svd({"L-" + str(j) for j in name_l}, "R", "L", cut)
+        norm = s.norm_max()
+        s /= norm
+        parameter *= norm
+        C[i+1] = v.edge_rename(map_r_2)
+        C[i] = u.edge_rename(map_l_2).multiple(s, "R", 'u')
+
+    return np.array(C), parameter
+
+def contract_single_line(A):
+    result = None
+    for a in A:
+        if result is None:
+            result = a
+        else:
+            result = result.contract(a, {("R", "L")})
+    return result
+
+def conjugate_line(A):
+    result = []
+    for a in A:
+        result.append(a.edge_rename({"D": "U", "U": "D"}).conjugate())
+    return np.array(result)
 
 @StorageFunction
 def tensor_AA(n, c, eta):

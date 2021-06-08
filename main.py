@@ -75,6 +75,12 @@ def fidelity(length, As, Bs):
 
 
 def build_chain(l, UU, n):
+    # UO2, DO2 -> 0 and 1
+    projector = Tensor(["i", "j"], [n, 2]).zero()
+    projector[{"i": 0, "j": 0}] = 1
+    projector[{"i": 1, "j": 1}] = 1
+    UU = UU.contract(projector, {("UO2", "i")}).edge_rename({"j": "UO2"})
+    UU = UU.contract(projector, {("DO2", "i")}).edge_rename({"j": "DO2"})
     if "UI2" in UU.name:
         UU_with_I2_0 = UU.shrink({"UI2": 0, "DI2": 0})
     else:
@@ -97,10 +103,12 @@ def build_chain(l, UU, n):
     })
     for t in range(1, l):
         result.append(middle_site)
-    result.append(
-        Tensor(["UL", "DL", "U", "D"], [n, n, n, n]).identity({
-            ("UL", "U"), ("DL", "D")
-        }).merge_edge({"L": ["UL", "DL"]}))
+    last = Tensor(["UL", "DL", "U", "D"], [n, n, n, n]).zero()
+    last[{"UL": 0, "U": 0, "DL": 0, "D": 0}] = 1
+    last[{"UL": 0, "U": 0, "DL": 1, "D": 1}] = 1
+    last[{"UL": 1, "U": 1, "DL": 0, "D": 0}] = 1
+    last[{"UL": 1, "U": 1, "DL": 1, "D": 1}] = 1
+    result.append(last.merge_edge({"L": ["UL", "DL"]}))
     return result
 
 
@@ -178,31 +186,92 @@ def add_parity(As, n, length, parity, only_up=False):
                     "P": "D"
                 }), set()).merge_edge(merge_map)
 
+def build_single_chain(l, n, c, r, omega, phi, psi, shrink_down=True, project=True):
+    projector = Tensor(["D", "U"], [n, 2]).zero()
+    projector[{"D":0, "U":0}] = 1
+    projector[{"D":1, "U":1}] = 1
 
-def cutoff_convergence(l, n, c, r, omega, phi, psi):
-    As = build_chain(l,
-                     tools.tensor_UU(n, c, r, omega, phi, psi, shrink_I2=True),
-                     n)
-    Bs = build_chain(l,
-                     tools.tensor_UU(n, n, r, omega, phi, psi, shrink_I2=True),
-                     n)
-    print(fidelity(l + 1, As, Bs))
+    U = tools.tensor_U(n, c, r, omega, phi, psi).edge_rename({"I1":"L", "O1":"R", "I2":"D", "O2":"U"})
+    if shrink_down:
+        U = U.shrink({"D": 0})
+    if project:
+        U = U.contract(projector, {("U", "D")})
+    result = [U for _ in range(l)]
+    return np.array(result)
 
+def cutoff_convergence(l, n, c, r, omega, phi, psi, d=1, amp=2):
+    cut = n*amp
 
-def exact_simulation(l, n, r, omega, phi, psi):
-    As = build_chain(l,
-                     tools.tensor_UU(n, n, r, omega, phi, psi, shrink_I2=True),
-                     n)
-    result = As[0].edge_rename({"U": "U0", "D": "D0"})
-    for t in range(1, l + 1):
-        result = result.contract(
-            As[t].edge_rename({
-                "U": "U" + str(t),
-                "D": "D" + str(t)
-            }), {("R", "L")})
-    U, S, V = result.svd({"U" + str(i) for i in range(l + 1)}, "P", "P", cut=1)
-    print(U.shrink({"P": 0}))
+    if d == 1:
+        As = build_single_chain(l, n, c, r, omega, phi, psi)
+    else:
+        Asb = build_single_chain(l, n, c, r, omega, phi, psi, project=False)
+        if d != 2:
+            Asm = build_single_chain(l, n, c, r, omega, phi, psi, shrink_down=False, project=False)
+        Ast = build_single_chain(l, n, c, r, omega, phi, psi, shrink_down=False)
+        As = Asb
+        for i in range(d-2):
+            As, _ = tools.two_to_one(As, Asm, cut, str(i), str(i+1))
+        As, _ = tools.two_to_one(As, Ast, cut, str(d-2), str(d-1))
+    As[0] = As[0].shrink({"L0":0})
+    As[l-1] = As[l-1].shrink({"R"+str(d-1):0})
+    Ass = tools.conjugate_line(As)
+    Ass[0] = Ass[0].edge_rename({"L"+str(i):"L'"+str(i) for i in range(d)})
+    Ass[l-1] = Ass[l-1].edge_rename({"R"+str(i):"R'"+str(i) for i in range(d)})
 
+    if d == 1:
+        Bs = build_single_chain(l, n, n, r, omega, phi, psi)
+    else:
+        Bsb = build_single_chain(l, n, n, r, omega, phi, psi, project=False)
+        if d != 2:
+            Bsm = build_single_chain(l, n, n, r, omega, phi, psi, shrink_down=False, project=False)
+        Bst = build_single_chain(l, n, n, r, omega, phi, psi, shrink_down=False)
+        Bs = Bsb
+        for i in range(d-2):
+            Bs, _ = tools.two_to_one(Bs, Bsm, cut, str(i), str(i+1))
+        Bs, _ = tools.two_to_one(Bs, Bst, cut, str(d-2), str(d-1))
+    Bs[0] = Bs[0].shrink({"L0":0})
+    Bs[l-1] = Bs[l-1].shrink({"R"+str(d-1):0})
+    Bss = tools.conjugate_line(Bs)
+    Bss[0] = Bss[0].edge_rename({"L"+str(i):"L'"+str(i) for i in range(d)})
+    Bss[l-1] = Bss[l-1].edge_rename({"R"+str(i):"R'"+str(i) for i in range(d)})
+
+    trace_pair = {("L" + str(i + 1), "R" + str(i)) for i in range(d-1)} | {("L'" + str(i + 1), "R'" + str(i)) for i in range(d-1)}
+    if d == 1:
+        trace_pair = {("L", "R")}
+
+    def contract_double_line(X, Y, cut):
+        chain, p = tools.two_to_one(X, Y, cut)
+        q = tools.contract_single_line(chain)
+        q = q.trace(trace_pair)
+        return (q[{}]*p).real
+
+    aa = contract_double_line(As, Ass, cut)
+    bb = contract_double_line(Bs, Bss, cut)
+    ab = contract_double_line(As, Bss, cut)
+    return ab / ((aa * bb)**0.5)
+
+def exact_simulation(l, n, r, omega, phi, psi, d=1):
+    cut = n*5
+    if d == 1:
+        As = build_single_chain(l, n, n, r, omega, phi, psi)
+        As[0] = As[0].shrink({"L":0})
+        As[l-1] = As[l-1].shrink({"R":0})
+    else:
+        Asb = build_single_chain(l, n, n, r, omega, phi, psi, project=False)
+        if d != 2:
+            Asm = build_single_chain(l, n, n, r, omega, phi, psi, shrink_down=False, project=False)
+        Ast = build_single_chain(l, n, n, r, omega, phi, psi, shrink_down=False)
+        As = Asb
+        for i in range(d-2):
+            As, _ = tools.two_to_one(As, Asm, cut, str(i), str(i+1))
+        As, _ = tools.two_to_one(As, Ast, cut, str(d-2), str(d-1))
+        As[0] = As[0].shrink({"L0":0})
+        As[l-1] = As[l-1].shrink({"R"+str(d-1):0})
+    As = [j.edge_rename({"U": "U"+str(i)}) for i, j in enumerate(As)]
+    state = tools.contract_single_line(As)
+    state = state.trace({("L"+str(i+1), "R"+str(i)) for i in range(d)})
+    return state
 
 def error_convergence(l,
                       n,

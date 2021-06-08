@@ -17,6 +17,7 @@
 #
 
 import random
+import os
 
 import numpy as np
 import TAT
@@ -38,18 +39,36 @@ def get_U(n, r, omega, phi, psi):
 
 
 def get_H(n):
-    """
-    Ising model的哈密顿量
-    """
     result = Tensor(["I1", "I2", "O1", "O2"], [n, n, n, n]).zero()
     block = result.block[{}]
-    block[0, 0, 0, 0] = 1
-    block[0, 1, 0, 1] = -1
-    block[1, 0, 1, 0] = -1
-    block[1, 1, 1, 1] = 1
-    block[1, 0, 0, 1] = 2
-    block[0, 1, 1, 0] = 2
-    return result
+    name = os.environ["Hamiltonian"]
+    if name == "Ising":
+        "g Sz + SxSx"
+        g = float(os.environ["IsingG"])
+        block[0, 0, 0, 0] = g / 2.
+        block[0, 1, 0, 1] = g / 2.
+        block[1, 0, 1, 0] = -g / 2.
+        block[1, 1, 1, 1] = -g / 2.
+        block[1, 1, 0, 0] = 1 / 4.
+        block[1, 0, 0, 1] = 1 / 4.
+        block[0, 1, 1, 0] = 1 / 4.
+        block[0, 0, 1, 1] = 1 / 4.
+    elif name == "Heisenberg":
+        block[0, 0, 0, 0] = 1 / 4.
+        block[0, 1, 0, 1] = -1 / 4.
+        block[1, 0, 1, 0] = -1 / 4.
+        block[1, 1, 1, 1] = 1 / 4.
+        block[1, 0, 0, 1] = 2 / 4.
+        block[0, 1, 1, 0] = 2 / 4.
+    elif name == "XY":
+        block[1, 0, 0, 1] = 2 / 4.
+        block[0, 1, 1, 0] = 2 / 4.
+    else:
+        raise RuntimeError("Unknown Hamiltonian")
+    J = 1
+    if "J" in os.environ:
+        J = float(os.environ["J"])
+    return result * J
 
 
 class Site:
@@ -103,10 +122,10 @@ class Chain:
             Site(cutoff, random.random(), random.random(), 0, 0)
             for j in range(depth)
         ] for i in range(length)]
-        self.hamiltonian = get_H(cutoff)
         self.projector = Tensor(["I", "O"], [cutoff, cutoff]).zero()
         self.projector[{"I": 0, "O": 0}] = 1
         self.projector[{"I": 1, "O": 1}] = 1
+        self.hamiltonian = get_H(cutoff)
 
         self.aux = {}
 
@@ -592,6 +611,11 @@ class Chain:
                 index += 1
         return self
 
+    def save_to_file(self, file_name):
+        with open(file_name, "w") as file:
+            print(self.length, self.depth, self.cutoff, file=file)
+            print(*self.get_value(), file=file)
+            print(self.energy(), file=file)
 
 # main
 def main():
@@ -600,9 +624,9 @@ def main():
     with open(sys.argv[1], "r") as file:
         config = [i for i in file.read().split()]
 
-    chain = Chain(cutoff=2, length=int(config[0]), depth=int(config[1]))
+    chain = Chain(cutoff=int(config[2]), length=int(config[0]), depth=int(config[1]))
 
-    if int(config[2]) != 0:
+    if len(config) != 3:
         chain.set_value([float(i) for i in config[3:]])
         print("READ:", chain.energy())
     else:
