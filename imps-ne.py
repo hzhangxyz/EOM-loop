@@ -33,41 +33,7 @@ def get_U(n, r, omega):
         "I2": "D"
     }).to(float)
 
-
-# Hamiltonian is selected by environment variable
-def get_H():
-    n = 2
-    result = Tensor(["I1", "I2", "O1", "O2"], [n, n, n, n]).zero()
-    block = result.block[{}]
-    name = os.environ["Hamiltonian"]
-    if name == "Ising":
-        "g Sz + SxSx"
-        g = float(os.environ["IsingG"])
-        block[0, 0, 0, 0] = g / 2.
-        block[0, 1, 0, 1] = g / 2.
-        block[1, 0, 1, 0] = -g / 2.
-        block[1, 1, 1, 1] = -g / 2.
-        block[1, 1, 0, 0] = 1 / 4.
-        block[1, 0, 0, 1] = 1 / 4.
-        block[0, 1, 1, 0] = 1 / 4.
-        block[0, 0, 1, 1] = 1 / 4.
-    elif name == "Heisenberg":
-        block[0, 0, 0, 0] = 1 / 4.
-        block[0, 1, 0, 1] = -1 / 4.
-        block[1, 0, 1, 0] = -1 / 4.
-        block[1, 1, 1, 1] = 1 / 4.
-        block[1, 0, 0, 1] = 2 / 4.
-        block[0, 1, 1, 0] = 2 / 4.
-    elif name == "XY":
-        block[1, 0, 0, 1] = 2 / 4.
-        block[0, 1, 1, 0] = 2 / 4.
-    else:
-        raise RuntimeError("Unknown Hamiltonian")
-    J = 1
-    if "J" in os.environ:
-        J = float(os.environ["J"])
-    return result * J
-
+from hamiltonian import get_H
 
 class IMPS:
     def __init__(self, depth, cutoff):
