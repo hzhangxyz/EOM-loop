@@ -42,6 +42,8 @@ class IMPS:
 
         self.hamiltonian = get_H()
 
+        self.projector_parameter = 1
+
         self.parameter = [[random.random() * 4 - 2,
                            random.random() * 12 - 6]
                           for _ in range(self.depth)]
@@ -135,6 +137,9 @@ class IMPS:
         return result
 
     def _get_chain(self):
+        projector = Tensor(["I", "O"], [self.cutoff, 2]).zero()
+        projector[{"I": 0, "O": 0}] = self.projector_parameter
+        projector[{"I": 1, "O": 1}] = 1
         site = [
             get_U(self.cutoff, self.parameter[i][0], self.parameter[i][1])
             for i in range(self.depth)
@@ -143,9 +148,6 @@ class IMPS:
         for i in range(self.depth):
             if i == 0:
                 if self.depth == 1:
-                    projector = Tensor(["I", "O"], [self.cutoff, 2]).zero()
-                    projector[{"I": 0, "O": 0}] = 1
-                    projector[{"I": 1, "O": 1}] = 1
                     chain.append(site[i].contract(projector,
                                                   {("U", "I")}).edge_rename({
                                                       "O":
@@ -154,9 +156,6 @@ class IMPS:
                 else:
                     chain.append(site[i].shrink({"D": 0}))
             elif i == self.depth - 1:
-                projector = Tensor(["I", "O"], [self.cutoff, 2]).zero()
-                projector[{"I": 0, "O": 0}] = 1
-                projector[{"I": 1, "O": 1}] = 1
                 chain.append(site[i].contract(
                     projector, {("U", "I")}).edge_rename({"O": "U"}))
             else:
@@ -204,7 +203,8 @@ class IMPS_Handle:
     def set_value(self, xs):
         self._energy = None
         imps = self.imps
-        index = 0
+        imps.projector_parameter = xs[0]
+        index = 1
         for i in range(imps.depth):
             imps.parameter[i][0] = xs[index]
             index += 1
@@ -214,7 +214,7 @@ class IMPS_Handle:
 
     def get_value(self):
         imps = self.imps
-        xs = []
+        xs = [imps.projector_parameter]
         for i in range(imps.depth):
             xs.append(imps.parameter[i][0])
             xs.append(imps.parameter[i][1])
@@ -230,6 +230,9 @@ class IMPS_Handle:
             loss = (abs(r) - 2) * 0.1
             result += max(0, loss)
 
+        loss = (abs(imps.projector_parameter - 0.5) - 0.5) * 0.1
+        result += max(0, loss)
+
         self._energy = result
         return result
 
@@ -238,7 +241,7 @@ class IMPS_Handle:
         E = self.energy()
         xs = self.get_value()
         gradient = []
-        for i in range(self.imps.depth * 2):
+        for i in range(self.imps.depth * 2 + 1):
             xss = xs[:]
             xss[i] += delta
             new_E = self.set_value(xss).energy()
