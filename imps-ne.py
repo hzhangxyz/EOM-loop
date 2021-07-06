@@ -33,7 +33,9 @@ def get_U(n, r, omega):
         "I2": "D"
     }).to(float)
 
+
 from hamiltonian import get_H
+
 
 class IMPS:
     def __init__(self, depth, cutoff):
@@ -42,7 +44,8 @@ class IMPS:
 
         self.hamiltonian = get_H()
 
-        self.projector_parameter = 1
+        self.projector_parameter_1 = random.random() * 2 - 1
+        self.projector_parameter_2 = random.random() * 2 - 1
 
         self.parameter = [[random.random() * 4 - 2,
                            random.random() * 12 - 6]
@@ -137,29 +140,36 @@ class IMPS:
         return result
 
     def _get_chain(self):
-        projector = Tensor(["I", "O"], [self.cutoff, 2]).zero()
-        projector[{"I": 0, "O": 0}] = self.projector_parameter
-        projector[{"I": 1, "O": 1}] = 1
+        projector = Tensor(["I", "O", "PL", "PR"],
+                           [self.cutoff, 2, 2, 2]).zero()
+        projector[{
+            "I": 0,
+            "O": 0,
+            "PL": 0,
+            "PR": 1
+        }] = self.projector_parameter_1
+        projector[{"I": 1, "O": 1, "PL": 0, "PR": 1}] = 1
+        projector[{
+            "I": 0,
+            "O": 0,
+            "PL": 1,
+            "PR": 0
+        }] = self.projector_parameter_2
+        projector[{"I": 1, "O": 1, "PL": 1, "PR": 0}] = 1
         site = [
             get_U(self.cutoff, self.parameter[i][0], self.parameter[i][1])
             for i in range(self.depth)
         ]
         chain = []
         for i in range(self.depth):
+            this_site = site[i]
+            if i == self.depth - 1:
+                this_site = this_site.contract(
+                    projector, {("U", "I")}).edge_rename({"O": "U"})
+                this_site = this_site.merge_edge({"L": ["PL", "L"], "R": ["PR", "R"]})
             if i == 0:
-                if self.depth == 1:
-                    chain.append(site[i].contract(projector,
-                                                  {("U", "I")}).edge_rename({
-                                                      "O":
-                                                      "U"
-                                                  }).shrink({"D": 0}))
-                else:
-                    chain.append(site[i].shrink({"D": 0}))
-            elif i == self.depth - 1:
-                chain.append(site[i].contract(
-                    projector, {("U", "I")}).edge_rename({"O": "U"}))
-            else:
-                chain.append(site[i])
+                this_site = this_site.shrink({"D": 0})
+            chain.append(this_site)
         for i in reversed(range(self.depth)):
             chain.append(chain[i].edge_rename({"D": "U", "U": "D"}))
         return chain
@@ -203,8 +213,9 @@ class IMPS_Handle:
     def set_value(self, xs):
         self._energy = None
         imps = self.imps
-        imps.projector_parameter = xs[0]
-        index = 1
+        imps.projector_parameter_1 = xs[0]
+        imps.projector_parameter_2 = xs[1]
+        index = 2
         for i in range(imps.depth):
             imps.parameter[i][0] = xs[index]
             index += 1
@@ -214,7 +225,7 @@ class IMPS_Handle:
 
     def get_value(self):
         imps = self.imps
-        xs = [imps.projector_parameter]
+        xs = [imps.projector_parameter_1, imps.projector_parameter_2]
         for i in range(imps.depth):
             xs.append(imps.parameter[i][0])
             xs.append(imps.parameter[i][1])
@@ -230,7 +241,9 @@ class IMPS_Handle:
             loss = (abs(r) - 2) * 0.1
             result += max(0, loss)
 
-        loss = (abs(imps.projector_parameter - 0.5) - 0.5) * 0.1
+        loss = (abs(imps.projector_parameter_1) - 1) * 0.1
+        result += max(0, loss)
+        loss = (abs(imps.projector_parameter_2) - 1) * 0.1
         result += max(0, loss)
 
         self._energy = result
@@ -241,7 +254,7 @@ class IMPS_Handle:
         E = self.energy()
         xs = self.get_value()
         gradient = []
-        for i in range(self.imps.depth * 2 + 1):
+        for i in range(self.imps.depth * 2 + 2):
             xss = xs[:]
             xss[i] += delta
             new_E = self.set_value(xss).energy()
