@@ -24,6 +24,7 @@ import tools
 
 Tensor = TAT(complex)
 
+
 def get_U(n, r, omega):
     return tools.tensor_U(n, n, r, omega, 0, 0).edge_rename({
         "I1": "L",
@@ -32,6 +33,7 @@ def get_U(n, r, omega):
         "I2": "D"
     })
 
+
 def get_H(n):
     result = Tensor(["I1", "I2", "O1", "O2"], [n, n, n, n]).zero()
     block = result.block[{}]
@@ -39,30 +41,31 @@ def get_H(n):
     if name == "Ising":
         "g Sz + SxSx"
         g = float(os.environ["IsingG"])
-        block[0, 0, 0, 0] = g/2.
-        block[0, 1, 0, 1] = g/2.
-        block[1, 0, 1, 0] = -g/2.
-        block[1, 1, 1, 1] = -g/2.
-        block[1, 1, 0, 0] = 1/4.
-        block[1, 0, 0, 1] = 1/4.
-        block[0, 1, 1, 0] = 1/4.
-        block[0, 0, 1, 1] = 1/4.
+        block[0, 0, 0, 0] = g / 2.
+        block[0, 1, 0, 1] = g / 2.
+        block[1, 0, 1, 0] = -g / 2.
+        block[1, 1, 1, 1] = -g / 2.
+        block[1, 1, 0, 0] = 1 / 4.
+        block[1, 0, 0, 1] = 1 / 4.
+        block[0, 1, 1, 0] = 1 / 4.
+        block[0, 0, 1, 1] = 1 / 4.
     elif name == "Heisenberg":
-        block[0, 0, 0, 0] = 1/4.
-        block[0, 1, 0, 1] = -1/4.
-        block[1, 0, 1, 0] = -1/4.
-        block[1, 1, 1, 1] = 1/4.
-        block[1, 0, 0, 1] = 2/4.
-        block[0, 1, 1, 0] = 2/4.
+        block[0, 0, 0, 0] = 1 / 4.
+        block[0, 1, 0, 1] = -1 / 4.
+        block[1, 0, 1, 0] = -1 / 4.
+        block[1, 1, 1, 1] = 1 / 4.
+        block[1, 0, 0, 1] = 2 / 4.
+        block[0, 1, 1, 0] = 2 / 4.
     elif name == "XY":
-        block[1, 0, 0, 1] = 2/4.
-        block[0, 1, 1, 0] = 2/4.
+        block[1, 0, 0, 1] = 2 / 4.
+        block[0, 1, 1, 0] = 2 / 4.
     else:
         raise RuntimeError("Unknown Hamiltonian")
     J = 1
     if "J" in os.environ:
         J = float(os.environ["J"])
     return result * J
+
 
 class Site:
     delta = 1e-6
@@ -87,51 +90,97 @@ class Site:
     def calc_d_omega(U, n, r, omega):
         return (get_U(n, r, omega + Site.delta) - U) / Site.delta
 
-class IMPS():
 
+class IMPS():
     def __init__(self, depth, cutoff):
         self.depth = depth
         self.cutoff = cutoff
-        self.site = [Site(cutoff, random.random(), random.random()) for j in range(depth)]
+        self.site = [
+            Site(cutoff, random.random(), random.random())
+            for j in range(depth)
+        ]
 
-        self.env_half = tools.LazyHandle(lambda U: U.shrink({"D": 0}).edge_rename(IMPS._rename_map(-depth)), self.site[0].U)
+        self.env_half = tools.LazyHandle(
+            lambda U: U.shrink({
+                "D": 0
+            }).edge_rename(IMPS._rename_map(-depth)), self.site[0].U)
         for i in range(1, depth):
-            self.env_half = tools.LazyHandle(lambda E, U, index: E.contract(U.edge_rename(IMPS._rename_map(index)), {("U", "D")}), self.env_half, self.site[i].U, i-depth)
+            self.env_half = tools.LazyHandle(
+                lambda E, U, index: E.contract(
+                    U.edge_rename(IMPS._rename_map(index)), {("U", "D")}),
+                self.env_half, self.site[i].U, i - depth)
 
-        half_env_map = {**{"L"+IMPS._number_to_string(-i):"L"+IMPS._number_to_string(i) for i in range(1, 1+depth)}, **{"R"+IMPS._number_to_string(-i):"R"+IMPS._number_to_string(i) for i in range(1, 1+depth)}}
-        another_half_env = tools.LazyHandle(lambda h: h.edge_rename(half_env_map), self.env_half)
-        self.env = tools.LazyHandle(lambda a, b: a.contract(b, {("U", "U")}), self.env_half, another_half_env)
+        half_env_map = {
+            **{
+                "L" + IMPS._number_to_string(-i): "L" + IMPS._number_to_string(i)
+                for i in range(1, 1 + depth)
+            },
+            **{
+                "R" + IMPS._number_to_string(-i): "R" + IMPS._number_to_string(i)
+                for i in range(1, 1 + depth)
+            }
+        }
+        another_half_env = tools.LazyHandle(
+            lambda h: h.edge_rename(half_env_map), self.env_half)
+        self.env = tools.LazyHandle(lambda a, b: a.contract(b, {("U", "U")}),
+                                    self.env_half, another_half_env)
 
-        env_pair = {("L"+IMPS._number_to_string(i), "R"+IMPS._number_to_string(i)) for i in range(-depth, 1+depth) if i != 0}
+        env_pair = {("L" + IMPS._number_to_string(i),
+                     "R" + IMPS._number_to_string(i))
+                    for i in range(-depth, 1 + depth) if i != 0}
         big_env_list = [self.env]
 
         for i in range(10):
             last = big_env_list[-1]
-            next = tools.LazyHandle(lambda a, b: a.contract(b, env_pair), last, last)
-            next = tools.LazyHandle(lambda a: a/a.norm_max(), next)
+            next = tools.LazyHandle(lambda a, b: a.contract(b, env_pair), last,
+                                    last)
+            next = tools.LazyHandle(lambda a: a / a.norm_max(), next)
             big_env_list.append(next)
 
         self.real_env = big_env_list[-1]
 
         self.hamiltonian = get_H(cutoff)
 
-        mid_I = tools.LazyHandle(lambda a, b: a.contract(b, env_pair), self.env, self.env)
+        mid_I = tools.LazyHandle(lambda a, b: a.contract(b, env_pair),
+                                 self.env, self.env)
 
-        half_env_pair = {("L"+IMPS._number_to_string(i), "R"+IMPS._number_to_string(i)) for i in range(-depth, 0) if i != 0}
-        two_half_env = tools.LazyHandle(lambda a: a.edge_rename({"U":"P1"}).contract(a.edge_rename({"U":"P2"}), half_env_pair), self.env_half)
-        another_two_half_env = tools.LazyHandle(lambda h: h.edge_rename(half_env_map), two_half_env)
-        mid_H = tools.LazyHandle(lambda a, H, b: a.contract(H,{("P1", "I1"),("P2","I2")}).contract(b, {("O1","P1"),("O2","P2")}), two_half_env, self.hamiltonian, another_two_half_env)
+        half_env_pair = {("L" + IMPS._number_to_string(i),
+                          "R" + IMPS._number_to_string(i))
+                         for i in range(-depth, 0) if i != 0}
+        two_half_env = tools.LazyHandle(
+            lambda a: a.edge_rename({
+                "U": "P1"
+            }).contract(a.edge_rename({"U": "P2"}), half_env_pair),
+            self.env_half)
+        another_two_half_env = tools.LazyHandle(
+            lambda h: h.edge_rename(half_env_map), two_half_env)
+        mid_H = tools.LazyHandle(
+            lambda a, H, b: a.contract(H, {("P1", "I1"), ("P2", "I2")
+                                           }).contract(b, {("O1", "P1"),
+                                                           ("O2", "P2")}),
+            two_half_env, self.hamiltonian, another_two_half_env)
 
-        shrink_left_map = {"L"+IMPS._number_to_string(i): 0 for i in range(-depth, 1+depth) if i != 0}
-        shrink_right_map = {"R"+IMPS._number_to_string(i): 0 for i in range(-depth, 1+depth) if i != 0}
+        shrink_left_map = {
+            "L" + IMPS._number_to_string(i): 0
+            for i in range(-depth, 1 + depth) if i != 0
+        }
+        shrink_right_map = {
+            "R" + IMPS._number_to_string(i): 0
+            for i in range(-depth, 1 + depth) if i != 0
+        }
 
-        def contract_and_shrink(r, m ,l):
-            return l.shrink(shrink_right_map).contract(m, env_pair).contract(r.shrink(shrink_left_map), env_pair)
+        def contract_and_shrink(r, m, l):
+            return l.shrink(shrink_right_map).contract(m, env_pair).contract(
+                r.shrink(shrink_left_map), env_pair)
 
-        self.total_I = tools.LazyHandle(contract_and_shrink, self.real_env, mid_I, self.real_env)
-        self.total_H = tools.LazyHandle(contract_and_shrink, self.real_env, mid_H, self.real_env)
+        self.total_I = tools.LazyHandle(contract_and_shrink, self.real_env,
+                                        mid_I, self.real_env)
+        self.total_H = tools.LazyHandle(contract_and_shrink, self.real_env,
+                                        mid_H, self.real_env)
 
-        self.energy_handle = tools.LazyHandle(lambda h, i: (complex(h)/complex(i)).real, self.total_H, self.total_I)
+        self.energy_handle = tools.LazyHandle(
+            lambda h, i: (complex(h) / complex(i)).real, self.total_H,
+            self.total_I)
 
     @staticmethod
     def _number_to_string(number):
@@ -169,9 +218,9 @@ class IMPS():
         xs = self.get_value()
         loss = 0
         for i in range(self.depth):
-            r = abs(xs[i*2])
+            r = abs(xs[i * 2])
             if r > 2:
-                loss += (r-2)*0.1
+                loss += (r - 2) * 0.1
         return self.energy_handle.value + loss
 
     def gradient(self):
@@ -179,11 +228,11 @@ class IMPS():
         E = self.energy()
         xs = self.get_value()
         gradient = []
-        for i in range(2*self.depth):
+        for i in range(2 * self.depth):
             xss = xs[:]
             xss[i] += delta
             new_E = self.set_value(xss).energy()
-            gradient.append((new_E - E)/delta)
+            gradient.append((new_E - E) / delta)
         self.set_value(xs)
         return gradient
 
@@ -208,7 +257,9 @@ class IMPS():
 
             return imps
 
+
 imps = IMPS.read_from_file(sys.argv[1])
 
 import opt_tools
+
 getattr(opt_tools, sys.argv[2])(imps, sys.argv[1], sys.argv[3:])

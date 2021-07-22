@@ -166,7 +166,10 @@ class IMPS:
             if i == self.depth - 1:
                 this_site = this_site.contract(
                     projector, {("U", "I")}).edge_rename({"O": "U"})
-                this_site = this_site.merge_edge({"L": ["PL", "L"], "R": ["PR", "R"]})
+                this_site = this_site.merge_edge({
+                    "L": ["PL", "L"],
+                    "R": ["PR", "R"]
+                })
             if i == 0:
                 this_site = this_site.shrink({"D": 0})
             chain.append(this_site)
@@ -179,28 +182,17 @@ class IMPS:
         chain = chain[:]
         size = len(chain)
 
-        for i in range(size - 2):
+        for i in range(size - 1):
             Q, R = chain[i].qr('r', {r}, r, l)
             chain[i] = Q
             chain[i + 1] = chain[i + 1].contract(R, {(l, r)})
 
-        for i in reversed(range(size - 1)):
-            name_l = {j for j in chain[i].name if j != r}
-            name_r = {j for j in chain[i + 1].name if j != l}
-            map_l_1 = {j: "L--" + str(j) for j in name_l}
-            map_r_1 = {j: "R--" + str(j) for j in name_r}
-            map_l_2 = {"L--" + str(j): j for j in name_l}
-            map_r_2 = {"R--" + str(j): j for j in name_r}
-
-            tensor_l = chain[i]
-            tensor_r = chain[i + 1]
-
-            big = tensor_l.edge_rename(map_l_1).contract(
-                tensor_r.edge_rename(map_r_1), {(r, l)})
-            u, s, v = big.svd({"L--" + str(j) for j in name_l}, r, l, cut)
-            s /= s.norm_max()
-            chain[i + 1] = v.edge_rename(map_r_2)
-            chain[i] = u.edge_rename(map_l_2).multiple(s, r, 'u')
+        for i in reversed(range(1, size)):
+            U, S, V = chain[i].svd({l}, r, l, cut)
+            chain[i] = V
+            S /= S.norm_max()
+            chain[i - 1] = chain[i - 1].contract(U.multiple(S, r, 'u'),
+                                                 {(r, l)})
 
         return chain
 

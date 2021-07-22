@@ -617,6 +617,7 @@ class Chain:
             print(*self.get_value(), file=file)
             print(self.energy(), file=file)
 
+
 # main
 def main():
     import sys
@@ -624,7 +625,9 @@ def main():
     with open(sys.argv[1], "r") as file:
         config = [i for i in file.read().split()]
 
-    chain = Chain(cutoff=int(config[2]), length=int(config[0]), depth=int(config[1]))
+    chain = Chain(cutoff=int(config[2]),
+                  length=int(config[0]),
+                  depth=int(config[1]))
 
     if len(config) != 3:
         chain.set_value([float(i) for i in config[3:]])

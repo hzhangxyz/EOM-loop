@@ -1,12 +1,14 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+
 def axis_descent(chain, file_name, config):
 
     delta = float(config[0])
+
     def update_once():
         old_E = chain.energy()
-        for i in range(chain.depth*2):
+        for i in range(chain.depth * 2):
             for d in [-delta, +delta]:
                 xs = chain.get_value()
                 xss = xs[:]
@@ -86,8 +88,10 @@ def normal_gradient(chain, file_name, config):
         while True:
             update_once()
 
+
 def calculate_energy(chain, file_name, config):
     chain.save_to_file(file_name)
+
 
 def energy_calculator(chain, file_name, config):
     with open(file_name, "w") as file:
@@ -102,6 +106,7 @@ def energy_calculator(chain, file_name, config):
                 print(i, j, chain.energy(), file=file)
                 j += 0.1
             i += 0.1
+
 
 def line_search(chain, file_name, config):
     from math import sqrt
@@ -255,6 +260,7 @@ def sample_line_search(chain, file_name, config):
         while True:
             update_once()
 
+
 def beyesian_opt(chain, file_name, config):
     from skopt import gp_minimize
     from skopt.learning import GaussianProcessRegressor
@@ -274,22 +280,25 @@ def beyesian_opt(chain, file_name, config):
         print(chain.energy())
         chain.set_value(best[0]).save_to_file(file_name)
 
-    space = [(-2., +2.) if i % 2 == 0 else (-6., +6.) for i, j in enumerate(x0)]
+    space = [(-2., +2.) if i % 2 == 0 else (-6., +6.)
+             for i, j in enumerate(x0)]
 
-    res = gp_minimize(get_energy,
-                      space,
-                      x0=x0,
-                      # base_estimator = GaussianProcessRegressor(),
-                      acq_func="EI",
-                      n_calls=500,
-                      n_initial_points=100,
-                      callback=callback_function)
+    res = gp_minimize(
+        get_energy,
+        space,
+        x0=x0,
+        # base_estimator = GaussianProcessRegressor(),
+        acq_func="EI",
+        n_calls=500,
+        n_initial_points=100,
+        callback=callback_function)
     callback_function(res)
 
     from skopt.plots import plot_convergence
     plot_convergence(res)
     from matplotlib import pyplot as plt
     plt.show()
+
 
 def scipy_optimize(chain, file_name, config):
     method = config[0]
@@ -311,6 +320,6 @@ def scipy_optimize(chain, file_name, config):
              chain.get_value(),
              method=method,
              jac=True,
-             options={"disp":True},
+             options={"disp": True},
              tol=float(config[1]),
              callback=callback_function)
