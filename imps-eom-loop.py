@@ -16,6 +16,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
+import numpy as np
 import TAT
 from tools import StorageFunction, tensor_U, loss_sign, read_from_file
 import random
@@ -49,8 +50,8 @@ class IMPS:
         self.cut1 = cut1
         self.cut2 = cut2
 
-        self.projector_1 = random_uniform(-1, 1)
-        self.projector_2 = random_uniform(-1, 1)
+        self.projector_1 = [random_uniform(-1, 1) for i in range(8)]
+        self.projector_2 = [random_uniform(-1, 1) for i in range(8)]
         self.parameter = [[[random_uniform(-2, 2),
                             random_uniform(-6, 6)] for i in range(self.depth)]
                           for _ in range(2)]
@@ -62,7 +63,7 @@ class IMPS:
         return 5
 
     def get_value(self):
-        xs = [self.projector_1, self.projector_2]
+        xs = [*self.projector_1, *self.projector_2]
         for j in range(2):
             for i in range(self.depth):
                 xs.append(self.parameter[j][i][0])
@@ -70,13 +71,13 @@ class IMPS:
         return xs
 
     def get_value_size(self):
-        return 2 + 4 * self.depth
+        return 2 * 8 + 4 * self.depth
 
     def set_value(self, xs):
         self._energy = None
-        self.projector_1 = xs[0]
-        self.projector_2 = xs[1]
-        index = 2
+        self.projector_1 = xs[0:8]
+        self.projector_2 = xs[8:16]
+        index = 2 * 8
         for j in range(2):
             for i in range(self.depth):
                 self.parameter[j][i][0] = xs[index]
@@ -95,9 +96,11 @@ class IMPS:
             projector = Tensor(["D", "U"], [self.cutoff, 2]).zero()
             projector[{"D": 1, "U": 1}] = 1
             if length % 2 == 0:
-                projector[{"D": 0, "U": 0}] = self.projector_1
+                projector.block[["D", "U"]][:4, :2] = np.array(
+                    self.projector_1).reshape([4, 2])
             else:
-                projector[{"D": 0, "U": 0}] = self.projector_2
+                projector.block[["D", "U"]][:4, :2] = np.array(
+                    self.projector_2).reshape([4, 2])
             result = projector
         else:
             shrink = []
@@ -124,8 +127,6 @@ class IMPS:
                         self.length // 2, self.cut1, self.cut2)
         self._energy = (e1 + e2) / 2
 
-        self._energy += loss_sign(abs(self.projector_1) - 1)
-        self._energy += loss_sign(abs(self.projector_2) - 1)
         for l in self.parameter:
             for r, omega in l:
                 self._energy += loss_sign(abs(r) - 2)
