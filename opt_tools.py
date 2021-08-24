@@ -174,6 +174,7 @@ def search_nearest(chain, file_name, config):
     direction = int(config[2])
 
     x = chain.get_value()
+    e = chain.energy()
     #print(x)
     #print(chain.gradient())
     print()
@@ -182,12 +183,12 @@ def search_nearest(chain, file_name, config):
         xn = x[:]
         xn[direction] += delta
         chain.set_value(xn)
-        print(delta, chain.energy())
+        print(delta, chain.energy(), chain.energy() - e)
 
     for i in range(count):
         try_x(-size / 2**i)
     try_x(0)
-    for i in range(count):
+    for i in reversed(range(count)):
         try_x(size / 2**i)
 
 
@@ -317,6 +318,8 @@ def scipy_optimize(chain, file_name, config):
 
     def callback_function(x):
         print(chain.energy())
+        with open(file_name+".log", "a") as file:
+            print(chain.energy(), file=file)
         save_to_file(chain, file_name)
 
     minimize(get_e_and_g,

@@ -16,13 +16,21 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
+import numpy as np
 import TAT
 import sys
 
 Tensor = TAT(float)
 
 
-def get_energy(length, depth, get_site, hamiltonian, h_index, cut1, cut2):
+def get_energy(length,
+               depth,
+               get_site,
+               hamiltonian,
+               h_index,
+               cut1,
+               cut2,
+               double_layer=False):
     length_m = len(hamiltonian.name) // 2
 
     def get_left(*, length, depth):
@@ -34,16 +42,43 @@ def get_energy(length, depth, get_site, hamiltonian, h_index, cut1, cut2):
     def get_right(*, length, depth):
         return get_site(depth=depth, length=length + h_index + length_m)
 
-    return get_energy_two_side(h_index, length - h_index - length_m, depth,
-                               get_left, get_right, get_middle, hamiltonian,
-                               cut1, cut2)
+    return get_energy_two_side(h_index,
+                               length - h_index - length_m,
+                               depth,
+                               get_left,
+                               get_right,
+                               get_middle,
+                               hamiltonian,
+                               cut1,
+                               cut2,
+                               double_layer=double_layer)
 
 
-def get_energy_two_side(length_l, length_r, depth, get_left, get_right,
-                        get_middle, hamiltonian, cut1, cut2):
-    left = contract_lattice_environment(length_l, depth, get_left, cut1, True)
-    right = contract_lattice_environment(length_r, depth, get_right, cut1,
-                                         False)
+def get_energy_two_side(length_l,
+                        length_r,
+                        depth,
+                        get_left,
+                        get_right,
+                        get_middle,
+                        hamiltonian,
+                        cut1,
+                        cut2,
+                        double_layer=False):
+    amp = []
+    left = contract_lattice_environment(length_l,
+                                        depth,
+                                        get_left,
+                                        cut1,
+                                        amp,
+                                        left_not_right=True,
+                                        double_layer=double_layer)
+    right = contract_lattice_environment(length_r,
+                                         depth,
+                                         get_right,
+                                         cut1,
+                                         amp,
+                                         left_not_right=False,
+                                         double_layer=double_layer)
 
     length_m = len(hamiltonian.name) // 2
 
@@ -59,15 +94,19 @@ def get_energy_two_side(length_l, length_r, depth, get_left, get_right,
             for j in range(length_m + 2):
                 down[j] = merge_tensor(down[j], this[j], {"L", "R"},
                                        {("U", "D")})
-            down = cut_line(down, "L", "R", cut2)
+            down = cut_line(down, "L", "R", cut2, amp)
 
     for k in range(depth):
         i = 2 * depth - k - 1
+        if double_layer:
+            real_depth = i
+        else:
+            real_depth = k
         this = []
         this.append(left[i])
         for j in range(length_m):
             this.append(
-                get_middle(length=j, depth=k).edge_rename({
+                get_middle(length=j, depth=real_depth).edge_rename({
                     "D": "U",
                     "U": "D"
                 }))
@@ -77,12 +116,11 @@ def get_energy_two_side(length_l, length_r, depth, get_left, get_right,
         else:
             for j in range(length_m + 2):
                 up[j] = merge_tensor(up[j], this[j], {"L", "R"}, {("D", "U")})
-            up = cut_line(up, "L", "R", cut2)
+            up = cut_line(up, "L", "R", cut2, amp)
 
     upv = up[0].edge_rename({"D": "P0"})
     for i in range(1, length_m + 2):
-        upv = upv.contract(up[i].edge_rename({"D": "P" + str(i)}),
-                           {("R", "L")})
+        upv = upv.contract(up[i].edge_rename({"D": "P" + str(i)}), {("R", "L")})
     downv = down[0].edge_rename({"U": "P0"})
     for i in range(1, length_m + 2):
         downv = downv.contract(down[i].edge_rename({"U": "P" + str(i)}),
@@ -90,24 +128,31 @@ def get_energy_two_side(length_l, length_r, depth, get_left, get_right,
 
     all_pair = {("P" + str(i), "P" + str(i)) for i in range(length_m + 2)}
     psipsi = upv.contract(downv, all_pair)
-    Hpsi = upv.contract(hamiltonian,
-                        {("P" + str(i), "I" + str(i))
-                         for i in range(1, length_m + 1)}).edge_rename({
-                             "O" + str(i): "P" + str(i)
-                             for i in range(1, length_m + 1)
-                         })
+    Hpsi = upv.contract(hamiltonian, {
+        ("P" + str(i), "I" + str(i)) for i in range(1, length_m + 1)
+    }).edge_rename({"O" + str(i): "P" + str(i) for i in range(1, length_m + 1)})
     psiHpsi = Hpsi.contract(downv, all_pair)
 
-    result = float(psiHpsi) / float(psipsi)
-    return result
+    amps = np.prod(amp)
+    psiHpsi = float(psiHpsi)
+    psipsi = float(psipsi)
+    return psiHpsi / psipsi, psiHpsi * amps, psipsi * amps
 
 
-def get_chain(get_function, length_index, depth):
+def get_chain(get_function, length_index, depth, double_layer=False):
     chain = []
     for j in range(depth):
         chain.append(get_function(length=length_index, depth=j))
-    for j in reversed(range(depth)):
-        chain.append(chain[j].edge_rename({"D": "U", "U": "D"}))
+    if double_layer:
+        for j in range(depth, depth * 2):
+            chain.append(
+                get_function(length=length_index, depth=j).edge_rename({
+                    "D": "U",
+                    "U": "D"
+                }))
+    else:
+        for j in reversed(range(depth)):
+            chain.append(chain[j].edge_rename({"D": "U", "U": "D"}))
     return chain
 
 
@@ -128,25 +173,30 @@ def merge_tensor(A, B, maybe_merge, maybe_contract):
                                          contract_pair).merge_edge(map_m)
 
 
-def contract_lattice_environment(length, depth, get_function, cut,
-                                 left_not_right):
+def contract_lattice_environment(length,
+                                 depth,
+                                 get_function,
+                                 cut,
+                                 amp,
+                                 left_not_right,
+                                 double_layer=False):
     if left_not_right:
         contract_pair = {("R", "L")}
     else:
         contract_pair = {("L", "R")}
     for i in reversed(range(length)):
-        this = get_chain(get_function, i, depth)
+        this = get_chain(get_function, i, depth, double_layer=double_layer)
         if i == length - 1:
             chain = this
         else:
             for j in range(depth * 2):
                 chain[j] = merge_tensor(chain[j], this[j], {"U", "D"},
                                         contract_pair)
-            chain = cut_line(chain, "D", "U", cut)
+            chain = cut_line(chain, "D", "U", cut, amp)
     return chain
 
 
-def cut_line(chain, l, r, cut):
+def cut_line(chain, l, r, cut, amp):
     """
     |   |   |   |
     X - X - X - X
@@ -162,7 +212,9 @@ def cut_line(chain, l, r, cut):
     for i in reversed(range(1, size)):
         U, S, V = chain[i].svd({l}, r, l, cut)
         chain[i] = V
-        S /= S.norm_max()
+        norm = S.norm_max()
+        amp.append(norm)
+        S /= norm
         chain[i - 1] = chain[i - 1].contract(U.multiple(S, r, 'u'), {(r, l)})
 
     return chain
