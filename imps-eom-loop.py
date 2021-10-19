@@ -130,11 +130,30 @@ class IMPS:
         """
         down_not_up = True
         down_0_up_1 = 0
-        if depth > self.depth:
+        if depth >= self.depth:
             down_not_up = False
             down_0_up_1 = 1
-            depth = 2 * self.depth - depth + 1
-        if depth == self.depth:
+            depth = 2 * self.depth - depth - 1
+        shrink = []
+        if depth == 0:
+            shrink.append("D")
+        if length == 0:
+            shrink.append("L")
+        if length == self.length - 1:
+            shrink.append("R")
+        if length % 2 == 0:
+            result = get_U(
+                self.cutoff, self.parameter[0][depth][0] +
+                self._diff_parameter[down_0_up_1][0][depth][0],
+                self.parameter[0][depth][1] +
+                self._diff_parameter[down_0_up_1][0][depth][1], tuple(shrink))
+        else:
+            result = get_U(
+                self.cutoff, self.parameter[1][depth][0] +
+                self._diff_parameter[down_0_up_1][1][depth][0],
+                self.parameter[1][depth][1] +
+                self._diff_parameter[down_0_up_1][1][depth][1], tuple(shrink))
+        if depth == self.depth - 1:
             projector = Tensor(["D", "U"], [self.cutoff, 2]).zero()
             projector[{"D": 1, "U": 1}] = 1
             if length % 2 == 0:
@@ -147,36 +166,14 @@ class IMPS:
                     np.array(self.projector_2) +
                     np.array(self._diff_projector_2[down_0_up_1])).reshape(
                         [4, 2])
-            result = projector
-        else:
-            shrink = []
-            if depth == 0:
-                shrink.append("D")
-            if length == 0:
-                shrink.append("L")
-            if length == self.length - 1:
-                shrink.append("R")
-            if length % 2 == 0:
-                result = get_U(
-                    self.cutoff, self.parameter[0][depth][0] +
-                    self._diff_parameter[down_0_up_1][0][depth][0],
-                    self.parameter[0][depth][1] +
-                    self._diff_parameter[down_0_up_1][0][depth][1],
-                    tuple(shrink))
-            else:
-                result = get_U(
-                    self.cutoff, self.parameter[1][depth][0] +
-                    self._diff_parameter[down_0_up_1][1][depth][0],
-                    self.parameter[1][depth][1] +
-                    self._diff_parameter[down_0_up_1][1][depth][1],
-                    tuple(shrink))
+            result = result.contract(projector, {("U", "D")})
         return result
 
     def get_energies(self, H=None):
         if H is None:
             H = self.H
         e1 = get_energy(self.length,
-                        self.depth + 1,
+                        self.depth,
                         self,
                         H,
                         self.length // 2 - 1,
@@ -184,7 +181,7 @@ class IMPS:
                         self.cut2,
                         double_layer=True)
         e2 = get_energy(self.length,
-                        self.depth + 1,
+                        self.depth,
                         self,
                         H,
                         self.length // 2,
@@ -204,11 +201,15 @@ class IMPS:
 
     def norm_proj(self):
         n = np.max(np.abs([*self.projector_1, *self.projector_2]))
+        print("norm proj norm", n)
         self.projector_1 = [i / n for i in self.projector_1]
         self.projector_2 = [i / n for i in self.projector_2]
 
 
 handle = read_from_file(IMPS, sys.argv[1])
+
+print(handle(depth=0,length=1).transpose(["U","L","R"]))
+print(handle(depth=0,length=2).transpose(["U","L","R"]))
 
 if sys.argv[2] != "it":
     getattr(opt_tools, sys.argv[2])(handle, sys.argv[1], sys.argv[3:])
@@ -218,6 +219,11 @@ delta_tau = float(sys.argv[3])
 up_bond = 0.05
 
 import opt_tools
+
+
+def noise():
+    return 1.0
+    return 1.0 + np.random.randn() * 0.1
 
 t = 0
 total_time = 0.
@@ -263,18 +269,45 @@ while True:
     A = np.array(A)
     print("solving...")
     xs = handle.get_value()
-    xss, residuals, rank, s = np.linalg.lstsq(A, C, rcond=1e-3)
+    xss, residuals, rank, s = np.linalg.lstsq(A, C * delta_tau)
+    epsilon = 0.05
+    max_singular = np.sort(s)[-1]
+    print("max singular", max_singular)
+    if np.linalg.norm(xss) > np.linalg.norm(xs) * epsilon:
+        idm = np.identity(len(A))
+        # find lam s.t. (A+lam id) xss = C delta_tau
+        low = 0
+        high = max_singular
+        while True:
+            xss, residuals, rank, s = np.linalg.lstsq(A + high * idm,
+                                                      C * delta_tau)
+            if np.linalg.norm(xss) > np.linalg.norm(xs) * epsilon:
+                low = high
+                high *= 2
+            else:
+                break
+        # between low and high
+        while True:
+            mid = (low + high) / 2
+            xss, residuals, rank, s = np.linalg.lstsq(A + mid * idm,
+                                                      C * delta_tau)
+            if np.linalg.norm(xss) > np.linalg.norm(xs) * epsilon:
+                low = mid
+            else:
+                high = mid
+            if high - low < 1e-6 * max_singular:
+                lam = high
+                xss, residuals, rank, s = np.linalg.lstsq(
+                    A + lam * idm, C * delta_tau)
+                break
+    else:
+        lam = 0
+    print("lam", lam)
     print("xs", xs)
     print("C", C)
-    print("singular of A", s)
+    print("A", A)
     print("xss", xss)
     print("apply...")
 
-    amp = min(delta_tau,
-              up_bond * np.linalg.norm(np.array(xs)) / np.linalg.norm(xss))
-    total_time += amp
-    xss *= amp
-
-    error = xss @ A @ xss + 2 * amp * xss @ C + amp * amp * psiHHpsi
-    print("|psi' d theta + tau H psi|^2", error)
+    total_time += delta_tau
     handle.set_value([i + j for i, j in zip(xs, xss)])
