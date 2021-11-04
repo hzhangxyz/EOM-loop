@@ -26,7 +26,7 @@ Tensor = TAT(float)
 # Hamiltonian is selected by environment variable
 def get_H(n=2):
     result = Tensor(["I1", "I2", "O1", "O2"], [n, n, n, n]).zero()
-    block = result.block[{}]
+    block = result.blocks[result.names]
     name = os.environ["Hamiltonian"]
     if name == "Ising":
         "g Sz + SxSx"

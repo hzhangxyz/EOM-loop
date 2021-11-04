@@ -12,6 +12,7 @@ Tensor = TAT(complex)
 
 
 class StorageFunction:
+
     def __init__(self, func):
         self.func = func
         self.storage = {}
@@ -31,7 +32,7 @@ def tensor_U(n, c, r, omega, phi, psi):
     fake_cut = 2 * c - 1
     data = np.array(matrix_U(fake_cut, r, omega, phi, psi))
     result = Tensor(["I1", "I2", "O1", "O2"], [n, n, n, n]).zero()
-    result.block[{}][:c, :c, :c, :c] = data[:c, :c, :c, :c]
+    result.blocks[result.names][:c, :c, :c, :c] = data[:c, :c, :c, :c]
     return result
 
 
@@ -152,8 +153,7 @@ def uniform(mean, delta):
     else:
         sample = 5
         return [
-            mean * (1 + delta * i / sample)
-            for i in range(-sample, sample + 1)
+            mean * (1 + delta * i / sample) for i in range(-sample, sample + 1)
         ]
 
 
@@ -213,24 +213,21 @@ def tensor_UUAA(n,
         if eta_1 != 1:
             UU = UU.contract(tensor_AA(n, c, eta_1),
                              {("UO1", "UI"), ("DO1", "DI")}).edge_rename({
-                                 "UO":
-                                 "UO1",
-                                 "DO":
-                                 "DO1"
+                                 "UO": "UO1",
+                                 "DO": "DO1"
                              })
     if eta_2 is not None:
         if eta_2 != 1:
             UU = UU.contract(tensor_AA(n, c, eta_2),
                              {("UO2", "UI"), ("DO2", "DI")}).edge_rename({
-                                 "UO":
-                                 "UO2",
-                                 "DO":
-                                 "DO2"
+                                 "UO": "UO2",
+                                 "DO": "DO2"
                              })
     return UU
 
 
 class LazyHandle:
+
     def __init__(self, func, *args, **kwargs):
         self._value = None
         self._downstream = set()

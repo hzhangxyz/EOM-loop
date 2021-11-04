@@ -31,7 +31,7 @@ def get_energy(length,
                cut1,
                cut2,
                double_layer=False):
-    length_m = len(hamiltonian.name) // 2
+    length_m = len(hamiltonian.names) // 2
 
     def get_left(*, length, depth):
         return get_site(depth=depth, length=h_index - length - 1)
@@ -80,14 +80,16 @@ def get_energy_two_side(length_l,
                                          left_not_right=False,
                                          double_layer=double_layer)
 
-    length_m = len(hamiltonian.name) // 2
+    length_m = len(hamiltonian.names) // 2
 
     for i in range(depth):
         this = []
-        this.append(left[i])
+        if left is not None:
+            this.append(left[i])
         for j in range(length_m):
             this.append(get_middle(length=j, depth=i))
-        this.append(right[i])
+        if right is not None:
+            this.append(right[i])
         if i == 0:
             down = this
         else:
@@ -103,14 +105,16 @@ def get_energy_two_side(length_l,
         else:
             real_depth = k
         this = []
-        this.append(left[i])
+        if left is not None:
+            this.append(left[i])
         for j in range(length_m):
             this.append(
                 get_middle(length=j, depth=real_depth).edge_rename({
                     "D": "U",
                     "U": "D"
                 }))
-        this.append(right[i])
+        if right is not None:
+            this.append(right[i])
         if k == 0:
             up = this
         else:
@@ -119,18 +123,27 @@ def get_energy_two_side(length_l,
             up = cut_line(up, "L", "R", cut2, amp)
 
     upv = up[0].edge_rename({"D": "P0"})
-    for i in range(1, length_m + 2):
+    for i in range(1, len(up)):
         upv = upv.contract(up[i].edge_rename({"D": "P" + str(i)}), {("R", "L")})
     downv = down[0].edge_rename({"U": "P0"})
-    for i in range(1, length_m + 2):
+    for i in range(1, len(down)):
         downv = downv.contract(down[i].edge_rename({"U": "P" + str(i)}),
                                {("R", "L")})
 
-    all_pair = {("P" + str(i), "P" + str(i)) for i in range(length_m + 2)}
+    # no left : phy_offset = 1 else 0
+    if left is None:
+        phy_offset = 1
+    else:
+        phy_offset = 0
+
+    all_pair = {("P" + str(i), "P" + str(i)) for i in range(len(up))}
     psipsi = upv.contract(downv, all_pair)
     Hpsi = upv.contract(hamiltonian, {
-        ("P" + str(i), "I" + str(i)) for i in range(1, length_m + 1)
-    }).edge_rename({"O" + str(i): "P" + str(i) for i in range(1, length_m + 1)})
+        ("P" + str(i - phy_offset), "I" + str(i))
+        for i in range(1, length_m + 1)
+    }).edge_rename({
+        "O" + str(i): "P" + str(i - phy_offset) for i in range(1, length_m + 1)
+    })
     psiHpsi = Hpsi.contract(downv, all_pair)
 
     amps = np.prod(amp)
@@ -161,13 +174,13 @@ def merge_tensor(A, B, maybe_merge, maybe_contract):
     map_B = {}
     map_m = {}
     for name in maybe_merge:
-        if name in A.name and name in B.name:
+        if name in A.names and name in B.names:
             map_A[name] = "A" + str(name)
             map_B[name] = "B" + str(name)
             map_m[name] = ["A" + str(name), "B" + str(name)]
     contract_pair = set()
     for a, b in maybe_contract:
-        if a in A.name:
+        if a in A.names:
             contract_pair.add((a, b))
     return A.edge_rename(map_A).contract(B.edge_rename(map_B),
                                          contract_pair).merge_edge(map_m)
@@ -184,6 +197,8 @@ def contract_lattice_environment(length,
         contract_pair = {("R", "L")}
     else:
         contract_pair = {("L", "R")}
+    if length == 0:
+        chain = None
     for i in reversed(range(length)):
         this = get_chain(get_function, i, depth, double_layer=double_layer)
         if i == length - 1:
@@ -210,11 +225,12 @@ def cut_line(chain, l, r, cut, amp):
         chain[i + 1] = chain[i + 1].contract(R, {(l, r)})
 
     for i in reversed(range(1, size)):
-        U, S, V = chain[i].svd({l}, r, l, cut)
+        U, S, V = chain[i].svd({l}, r, l, "SU", "SV", cut)
         chain[i] = V
         norm = S.norm_max()
         amp.append(norm)
         S /= norm
-        chain[i - 1] = chain[i - 1].contract(U.multiple(S, r, 'u'), {(r, l)})
+        chain[i - 1] = chain[i - 1].contract(
+            U.contract(S, {(r, "SU")}).edge_rename({"SV": r}), {(r, l)})
 
     return chain

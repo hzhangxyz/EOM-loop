@@ -149,9 +149,7 @@ def line_search(chain, file_name, config):
         gs_norm = sqrt(sum(i * i for i in gs))
 
         begin = chain.get_value()
-        end = [
-            x - delta * g / gs_norm for x, g in zip(begin, chain.gradient())
-        ]
+        end = [x - delta * g / gs_norm for x, g in zip(begin, chain.gradient())]
         e_begin = chain.energy()
         e_end = chain.set_value(end).energy()
         line_search_once(0, begin, e_begin, end, e_end)
@@ -242,9 +240,7 @@ def sample_line_search(chain, file_name, config):
 
             print(i)
             cx = chain.get_value()
-            begin = [
-                x - delta * (1 if j == i else 0) for j, x in enumerate(cx)
-            ]
+            begin = [x - delta * (1 if j == i else 0) for j, x in enumerate(cx)]
             end = [x + delta * (1 if j == i else 0) for j, x in enumerate(cx)]
             e_begin = chain.set_value(begin).energy()
             e_end = chain.set_value(end).energy()
@@ -284,8 +280,7 @@ def beyesian_opt(chain, file_name, config):
         print(chain.energy())
         chain.set_value(best[0]).save_to_file(file_name)
 
-    space = [(-2., +2.) if i % 2 == 0 else (-6., +6.)
-             for i, j in enumerate(x0)]
+    space = [(-2., +2.) if i % 2 == 0 else (-6., +6.) for i, j in enumerate(x0)]
 
     res = gp_minimize(
         get_energy,
@@ -318,7 +313,7 @@ def scipy_optimize(chain, file_name, config):
 
     def callback_function(x):
         print(chain.energy())
-        with open(file_name+".log", "a") as file:
+        with open(file_name + ".log", "a") as file:
             print(chain.energy(), file=file)
         save_to_file(chain, file_name)
 

@@ -51,6 +51,7 @@ def random_uniform(a, b):
 
 
 class IMPS:
+
     def set_shape(self, depth, length, cutoff, cut1, cut2):
         self.depth = depth
         self.length = length

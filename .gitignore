@@ -4,6 +4,7 @@ out
 pybind11
 .vs
 CMakeSettings.json
+.style.yapf
 *.o
 *.so
 *.dll
@@ -12,6 +13,7 @@ CMakeSettings.json
 __pycache__
 Fig
 test*
+*.nb
 run
 ltximg
 *.org

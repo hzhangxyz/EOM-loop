@@ -45,8 +45,9 @@ def get_U_spdc(n, r, omega, phi, psi):
     a2_dagger = get_a_dagger(n).edge_rename({"I": "I2", "O": "O2"})
     term1 = (e**(1.j * phi)) * a1.contract(a2, set())
     term2 = (e**(-1.j * phi)) * a1_dagger.contract(a2_dagger, set())
-    return ((term1 - term2) * (r / 2.)).exponential(
-        {("I1", "O1"), ("I2", "O2")}, step=2)
+    return ((term1 - term2) * (r / 2.)).exponential({("I1", "O1"),
+                                                     ("I2", "O2")},
+                                                    step=2)
 
 
 def get_U(n, r, omega, phi, psi):

@@ -195,7 +195,7 @@ class IMPS:
 
     def energy(self):
         if self._energy is None:
-            handle.set_diff(-1, -1)
+            self.set_diff(-1, -1)
             self._energy = self.get_energies()[0]
         return self._energy
 
@@ -208,8 +208,8 @@ class IMPS:
 
 handle = read_from_file(IMPS, sys.argv[1])
 
-print(handle(depth=0,length=1).transpose(["U","L","R"]))
-print(handle(depth=0,length=2).transpose(["U","L","R"]))
+print(handle(depth=0, length=1).transpose(["U", "L", "R"]))
+print(handle(depth=0, length=2).transpose(["U", "L", "R"]))
 
 if sys.argv[2] != "it":
     getattr(opt_tools, sys.argv[2])(handle, sys.argv[1], sys.argv[3:])
@@ -224,6 +224,7 @@ import opt_tools
 def noise():
     return 1.0
     return 1.0 + np.random.randn() * 0.1
+
 
 t = 0
 total_time = 0.

@@ -231,14 +231,7 @@ def cutoff_convergence(l, n, c, r, omega, phi, psi, d=1, amp=2):
                                      psi,
                                      shrink_down=False,
                                      project=False)
-        Ast = build_single_chain(l,
-                                 n,
-                                 c,
-                                 r,
-                                 omega,
-                                 phi,
-                                 psi,
-                                 shrink_down=False)
+        Ast = build_single_chain(l, n, c, r, omega, phi, psi, shrink_down=False)
         As = Asb
         for i in range(d - 2):
             As, _ = tools.two_to_one(As, Asm, cut, str(i), str(i + 1))
@@ -246,12 +239,9 @@ def cutoff_convergence(l, n, c, r, omega, phi, psi, d=1, amp=2):
     As[0] = As[0].shrink({"L0": 0})
     As[l - 1] = As[l - 1].shrink({"R" + str(d - 1): 0})
     Ass = tools.conjugate_line(As)
-    Ass[0] = Ass[0].edge_rename(
-        {"L" + str(i): "L'" + str(i)
-         for i in range(d)})
+    Ass[0] = Ass[0].edge_rename({"L" + str(i): "L'" + str(i) for i in range(d)})
     Ass[l - 1] = Ass[l - 1].edge_rename(
-        {"R" + str(i): "R'" + str(i)
-         for i in range(d)})
+        {"R" + str(i): "R'" + str(i) for i in range(d)})
 
     if d == 1:
         Bs = build_single_chain(l, n, n, r, omega, phi, psi)
@@ -267,14 +257,7 @@ def cutoff_convergence(l, n, c, r, omega, phi, psi, d=1, amp=2):
                                      psi,
                                      shrink_down=False,
                                      project=False)
-        Bst = build_single_chain(l,
-                                 n,
-                                 n,
-                                 r,
-                                 omega,
-                                 phi,
-                                 psi,
-                                 shrink_down=False)
+        Bst = build_single_chain(l, n, n, r, omega, phi, psi, shrink_down=False)
         Bs = Bsb
         for i in range(d - 2):
             Bs, _ = tools.two_to_one(Bs, Bsm, cut, str(i), str(i + 1))
@@ -282,16 +265,12 @@ def cutoff_convergence(l, n, c, r, omega, phi, psi, d=1, amp=2):
     Bs[0] = Bs[0].shrink({"L0": 0})
     Bs[l - 1] = Bs[l - 1].shrink({"R" + str(d - 1): 0})
     Bss = tools.conjugate_line(Bs)
-    Bss[0] = Bss[0].edge_rename(
-        {"L" + str(i): "L'" + str(i)
-         for i in range(d)})
+    Bss[0] = Bss[0].edge_rename({"L" + str(i): "L'" + str(i) for i in range(d)})
     Bss[l - 1] = Bss[l - 1].edge_rename(
-        {"R" + str(i): "R'" + str(i)
-         for i in range(d)})
+        {"R" + str(i): "R'" + str(i) for i in range(d)})
 
-    trace_pair = {("L" + str(i + 1), "R" + str(i))
-                  for i in range(d - 1)} | {("L'" + str(i + 1), "R'" + str(i))
-                                            for i in range(d - 1)}
+    trace_pair = {("L" + str(i + 1), "R" + str(i)) for i in range(d - 1)
+                 } | {("L'" + str(i + 1), "R'" + str(i)) for i in range(d - 1)}
     if d == 1:
         trace_pair = {("L", "R")}
 
@@ -325,14 +304,7 @@ def exact_simulation(l, n, r, omega, phi, psi, d=1):
                                      psi,
                                      shrink_down=False,
                                      project=False)
-        Ast = build_single_chain(l,
-                                 n,
-                                 n,
-                                 r,
-                                 omega,
-                                 phi,
-                                 psi,
-                                 shrink_down=False)
+        Ast = build_single_chain(l, n, n, r, omega, phi, psi, shrink_down=False)
         As = Asb
         for i in range(d - 2):
             As, _ = tools.two_to_one(As, Asm, cut, str(i), str(i + 1))
@@ -359,9 +331,13 @@ def error_convergence(l,
                       post=None,
                       post_last=None,
                       filter_parity=None):
-    As = build_chain(l,
-                     tools.tensor_UU(n, n, r, omega, phi, psi, shrink_I2=True),
-                     n)
+    As = build_chain(l, tools.tensor_UU(n,
+                                        n,
+                                        r,
+                                        omega,
+                                        phi,
+                                        psi,
+                                        shrink_I2=True), n)
     Bs = build_chain(
         l,
         tools.tensor_UUAA(n,
