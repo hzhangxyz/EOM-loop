@@ -165,7 +165,7 @@ class AbstractSystem:
                 iden = self.Tensor(["U", "D"], [d, d]).identity({("U", "D")})
                 self.auxiliaries[self.L1, i] = iden
             if len(position) == 1:
-                i = position
+                i = position[0]
                 self.auxiliaries[self.L1, i] = hamiltonian.edge_rename({
                     "I0": "U",
                     "O0": "D"
