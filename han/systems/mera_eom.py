@@ -182,7 +182,6 @@ class Mera_EOM(AbstractSystem):
             projector = self.Tensor(["D", "U"], [self.d, self.D]).zero()
             for d in range(self.d):
                 projector[{"D": d, "U": d}] = 1
-                projector[{"D": d, "U": d}] = 1
             result = result.contract(projector, {("D", "U")})
         return result
 

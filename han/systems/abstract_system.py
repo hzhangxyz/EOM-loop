@@ -79,7 +79,8 @@ class AbstractSystem:
         if l1l2 not in self._tensors or self._tensors[l1l2] is None:
             self._tensors[l1l2] = self._get_tensor(l1l2)
             l1, l2 = l1l2
-            self._set_auxiliaries(l1, l2)
+            if self.auxiliaries is not None:
+                self._set_auxiliaries(l1, l2)
         return self._tensors[l1l2]
 
     def _get_tensor(self, l1l2, param=None):
