@@ -1,15 +1,15 @@
 import pickle
 import TAT
-from han.systems.mera_eom import Mera_EOM
-from han.systems.heisenberg import Heisenberg
+from han.systems.mera_eom_with_d2_post import Mera_EOM_with_d2_post
+from han.systems.ising import Ising
 
 
-class Mera_Heisenberg(Heisenberg, Mera_EOM):
+class Mera_Ising(Ising, Mera_EOM_with_d2_post):
     pass
 
 
 def create(file_name, layer, D, Dc, seed):
-    lattice = Mera_Heisenberg(layer=layer, D=D, Dc=Dc, Tensor=TAT.No.D.Tensor)
+    lattice = Mera_Ising(layer=layer, D=D, Dc=Dc, Tensor=TAT.No.D.Tensor)
 
     TAT.random.seed(seed)
     uni1 = TAT.random.uniform_real(-1, +1)
@@ -26,6 +26,9 @@ def create(file_name, layer, D, Dc, seed):
         for lp in range(LP):
             lattice.parameter[l1, lp, "r"] = uni2()
             lattice.parameter[l1, lp, "omega"] = unipi()
+    for l2 in range(lattice.L2):
+        lattice.parameter["P", l2, 0, "p"] = uni1()
+        lattice.parameter["P", l2, 1, "p"] = uni1()
 
     with open(file_name, "wb") as file:
         pickle.dump(lattice, file)

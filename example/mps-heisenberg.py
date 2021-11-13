@@ -1,32 +1,33 @@
 import pickle
 import TAT
-from han.systems.mera_eom import Mera_EOM
+from han.systems.mps_eom_with_x4_post import MPS_EOM_with_x4_post
 from han.systems.heisenberg import Heisenberg
 
 
-class Mera_Heisenberg(Heisenberg, Mera_EOM):
+class MPS_Heisenberg(Heisenberg, MPS_EOM_with_x4_post):
     pass
 
 
-def create(file_name, layer, D, Dc, seed):
-    lattice = Mera_Heisenberg(layer=layer, D=D, Dc=Dc, Tensor=TAT.No.D.Tensor)
+def create(file_name, depth, length, D, Dc, seed):
+    lattice = MPS_Heisenberg(depth=depth,
+                             length=length,
+                             D=D,
+                             Dc=Dc,
+                             Tensor=TAT.No.D.Tensor)
 
     TAT.random.seed(seed)
     uni1 = TAT.random.uniform_real(-1, +1)
     uni2 = TAT.random.uniform_real(-2, +2)
     unipi = TAT.random.uniform_real(-3.14, +3.14)
 
-    LP = 1
     for l1 in range(lattice.L1):
-        if l1 % 2 == 0:
-            if l1 != 0:
-                LP *= 2
-        else:
-            LP += 1
-        for lp in range(LP):
-            lattice.parameter[l1, lp, "r"] = uni2()
-            lattice.parameter[l1, lp, "omega"] = unipi()
-
+        for l2 in range(lattice.L2):
+            lattice.parameter[l1, l2, "r"] = uni2()
+            lattice.parameter[l1, l2, "omega"] = unipi()
+    for l2 in range(lattice.L2):
+        for ed in range(2):
+            for e4 in range(4):
+                lattice.parameter["P", l2, ed, e4] = uni1()
     with open(file_name, "wb") as file:
         pickle.dump(lattice, file)
 

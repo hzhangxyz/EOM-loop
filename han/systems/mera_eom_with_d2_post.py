@@ -93,7 +93,7 @@ def get_U(Tensor, n, r, omega, config):
         raise ValueError("invalid tensor type")
 
 
-class Mera_EOM(AbstractSystem):
+class Mera_EOM_with_d2_post(AbstractSystem):
 
     def __init__(self, layer, D, Dc, Tensor):
         depth = layer * 2
@@ -101,7 +101,7 @@ class Mera_EOM(AbstractSystem):
         for i in range(layer):
             length += 1
             length *= 2
-        super(Mera_EOM, self).__init__(depth, length, Dc, Tensor)
+        super(Mera_EOM_with_d2_post, self).__init__(depth, length, Dc, Tensor)
         self.D = D
 
         self.layer = layer
@@ -180,13 +180,16 @@ class Mera_EOM(AbstractSystem):
             result = get_U(self.Tensor, self.D, r, omega, config)
         if l1 == self.L1 - 1:
             projector = self.Tensor(["D", "U"], [self.d, self.D]).zero()
-            for d in range(self.d):
-                projector[{"D": d, "U": d}] = 1
-                projector[{"D": d, "U": d}] = 1
+            projector[{"D": 0, "U": 0}] = param[("P", l2, 0, "p")]
+            projector[{"D": 1, "U": 1}] = param[("P", l2, 1, "p")]
             result = result.contract(projector, {("D", "U")})
         return result
 
     def _clear_tensor(self, key):
-        l1, lp, param = key
-        l1, l2 = self._mera_params[l1, lp]
-        self._real_clear_tensor(l1, l2)
+        if len(key) == 3:
+            l1, lp, param = key
+            l1, l2 = self._mera_params[l1, lp]
+            self._real_clear_tensor(l1, l2)
+        if len(key) == 4:
+            _, l2, d, _ = key
+            self._real_clear_tensor(self.L1 - 1, l2)
