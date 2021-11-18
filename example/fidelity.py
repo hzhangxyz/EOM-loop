@@ -31,11 +31,11 @@ def fidelity(r, layer, D1, D2, Dc):
     return result
 
 
-def main(r, layer, D):
+def main(r, layer, D1, D2):
     Dc = 10
     last = None
     while True:
-        result = fidelity(r, layer, D, D + 1, Dc)
+        result = fidelity(r, layer, D1, D2, Dc)
         print(Dc, "%.12f" % result)
         if last is not None:
             if abs(last - result) < 1e-12:
