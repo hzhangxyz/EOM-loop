@@ -5,10 +5,13 @@ from han.systems.inner_product import inner_product
 
 
 def fidelity(r, layer, D1, D2, Dc):
+    assert (D1 <= D2)
     psi1 = Mera_EOM(layer=layer, D=D1, Dc=Dc, Tensor=TAT.No.D.Tensor)
-    psi1.d = 2
+    psi1.d = D1
     psi2 = Mera_EOM(layer=layer, D=D2, Dc=Dc, Tensor=TAT.No.D.Tensor)
-    psi2.d = 2
+    psi2.d = D2
+    psi2_cut = Mera_EOM(layer=layer, D=D2, Dc=Dc, Tensor=TAT.No.D.Tensor)
+    psi2_cut.d = D1
 
     LP = 1
     for l1 in range(psi1.L1):
@@ -19,20 +22,21 @@ def fidelity(r, layer, D1, D2, Dc):
             LP += 1
         for lp in range(LP):
             psi1.parameter[l1, lp, "r"] = r
-            psi2.parameter[l1, lp, "r"] = r
             psi1.parameter[l1, lp, "omega"] = 0
+            psi2.parameter[l1, lp, "r"] = r
             psi2.parameter[l1, lp, "omega"] = 0
+            psi2_cut.parameter[l1, lp, "r"] = r
+            psi2_cut.parameter[l1, lp, "omega"] = 0
 
-    psi1psi2 = inner_product(psi1, psi2)
-    psi1psi1 = inner_product(psi1, psi1)
-    psi2psi2 = inner_product(psi2, psi2)
+    p11 = inner_product(psi1, psi1)
+    p22 = inner_product(psi2, psi2)
+    p12 = inner_product(psi1, psi2_cut)
 
-    result = (psi1psi2 * psi1psi2) / (psi1psi1 * psi2psi2)
+    result = (p12 * p12) / (p11 * p22)
     return result
 
 
-def main(r, layer, D1, D2):
-    Dc = 10
+def main(r, layer, D1, D2, Dc):
     last = None
     while True:
         result = fidelity(r, layer, D1, D2, Dc)
