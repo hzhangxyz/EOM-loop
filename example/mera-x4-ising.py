@@ -46,7 +46,13 @@ def update(file_name, count, step):
             print(t, a / b / lattice.L2, file=file)
         gp = lattice._grad_of_param()
         for k in gp:
-            lattice.parameter[k] -= float(step) * gp[k]
+            g = gp[k]
+            if k[2] == "r":
+                if lattice.parameter[k] >= +2 and g < 0:
+                    g = 0
+                if lattice.parameter[k] <= -2 and g > 0:
+                    g = 0
+            lattice.parameter[k] -= float(step) * g
         with open(file_name, "wb") as file:
             lattice.auxiliaries = None
             pickle.dump(lattice, file)
