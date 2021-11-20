@@ -1,10 +1,10 @@
 import pickle
 import TAT
-from han.systems.mera_eom_with_x4_post import Mera_EOM_with_x4_post
+from han.systems.mera_eom_with_x6_post import Mera_EOM_with_x6_post
 from han.systems.heisenberg import Heisenberg
 
 
-class Mera_Heisenberg(Heisenberg, Mera_EOM_with_x4_post):
+class Mera_Heisenberg(Heisenberg, Mera_EOM_with_x6_post):
     pass
 
 
@@ -28,8 +28,8 @@ def create(file_name, layer, D, Dc, seed):
             lattice.parameter[l1, lp, "omega"] = unipi()
     for l2 in range(lattice.L2):
         for ed in range(2):
-            for e4 in range(4):
-                lattice.parameter["P", l2, ed, e4] = uni1()
+            for e6 in range(6):
+                lattice.parameter["P", l2, ed, e6] = uni1()
 
     with open(file_name, "wb") as file:
         pickle.dump(lattice, file)
