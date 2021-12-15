@@ -42,4 +42,4 @@ def inner_product(psi1, psi2):
                 "U": "D",
                 "D": "U"
             }).conjugate()
-    return float(auxiliaries(()))
+    return float(auxiliaries.hole(()))
