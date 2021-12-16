@@ -1,11 +1,11 @@
 import pickle
 import TAT
-from han.systems.abstract_system import AbstractHoleSystem
+from han.systems.abstract_system import AbstractSamplingSystem
 from han.systems.mps_eom_with_x4_post import MPS_EOM_with_x4_post
 from han.systems.heisenberg import Heisenberg
 
 
-class MPS_Heisenberg(Heisenberg, MPS_EOM_with_x4_post, AbstractHoleSystem):
+class MPS_Heisenberg(Heisenberg, MPS_EOM_with_x4_post, AbstractSamplingSystem):
     pass
 
 
@@ -33,20 +33,20 @@ def create(file_name, depth, length, D, Dc, seed):
         pickle.dump(lattice, file)
 
 
-def update(file_name, count, step):
+def update(file_name, count, step, sampling, seed):
+    TAT.random.seed(seed)
     with open(file_name, "rb") as file:
         lattice = pickle.load(file)
     for t in range(count):
-        lattice.refresh_auxiliaries()
-        a, b = lattice._energies()
-        print(t, a / b / lattice.L2)
+        ss = lattice.get_configurations(sampling)
+        e = lattice.energy(ss)
+        print(t, e / lattice.L2)
         with open(file_name.replace(".dat", "") + ".log", "a") as file:
-            print(t, a / b / lattice.L2, file=file)
-        gp = lattice._grad_of_param()
+            print(t, e / lattice.L2, file=file)
+        gp = lattice._grad_of_param(ss, e)
         for k in gp:
             lattice.parameter[k] -= float(step) * gp[k]
         with open(file_name, "wb") as file:
-            lattice.auxiliaries = None
             pickle.dump(lattice, file)
 
 

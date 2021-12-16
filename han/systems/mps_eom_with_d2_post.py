@@ -45,13 +45,19 @@ def get_U(Tensor, n, r, omega, shrink=tuple()):
 class MPS_EOM_with_x2_post(AbstractSystem):
 
     def __init__(self, depth, length, D, Dc, Tensor):
-        super(MPS_EOM_with_x2_post, self).__init__(depth, length, Dc, Tensor)
+        super(MPS_EOM_with_x2_post, self).__init__(depth + 1, length, Dc,
+                                                   Tensor)
         self.D = D
 
     def _get_tensor(self, l1l2, param=None):
         if param is None:
             param = self._parameter
         l1, l2 = l1l2
+        if l1 == self.L1 - 1:
+            projector = self.Tensor(["D", "U"], [self.d, self.D]).zero()
+            projector[{"D": 0, "U": 0}] = param[("P", l2, 0, "p")]
+            projector[{"D": 1, "U": 1}] = param[("P", l2, 1, "p")]
+            return projector
         r = param[(l1, l2, "r")]
         omega = param[(l1, l2, "omega")]
         shrink = set()
@@ -62,11 +68,6 @@ class MPS_EOM_with_x2_post(AbstractSystem):
         if l2 == self.L2 - 1:
             shrink.add("R")
         result = get_U(self.Tensor, self.D, r, omega, tuple(shrink))
-        if l1 == self.L1 - 1:
-            projector = self.Tensor(["D", "U"], [self.d, self.D]).zero()
-            projector[{"D": 0, "U": 0}] = param[("P", l2, 0, "p")]
-            projector[{"D": 1, "U": 1}] = param[("P", l2, 1, "p")]
-            result = result.contract(projector, {("D", "U")})
         return result
 
     def _clear_tensor(self, key):

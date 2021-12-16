@@ -101,7 +101,8 @@ class Mera_EOM_with_x6_post(AbstractSystem):
         for i in range(layer):
             length += 1
             length *= 2
-        super(Mera_EOM_with_x6_post, self).__init__(depth, length, Dc, Tensor)
+        super(Mera_EOM_with_x6_post, self).__init__(depth + 1, length, Dc,
+                                                    Tensor)
         self.D = D
 
         self.layer = layer
@@ -121,11 +122,11 @@ class Mera_EOM_with_x6_post(AbstractSystem):
         self._mera_tensors = {}
 
         interval = 1
-        for l1 in reversed(range(self.L1)):
+        for l1 in reversed(range(self.L1 - 1)):
             LP = param_length[l1]
             for lp in range(LP):
                 if l1 % 2 == 1:
-                    if l1 == self.L1 - 1:
+                    if l1 == self.L1 - 1 - 1:
                         l2 = lp * 2
                     else:
                         l2 = self._mera_params[(l1 + 1, lp * 2)][1]
@@ -165,6 +166,12 @@ class Mera_EOM_with_x6_post(AbstractSystem):
         if param is None:
             param = self._parameter
         l1, l2 = l1l2
+        if l1 == self.L1 - 1:
+            projector = self.Tensor(["D", "U"], [self.d, self.D]).zero()
+            for ed in range(self.d):
+                for e6 in range(6):
+                    projector[{"D": ed, "U": e6}] = param[("P", l2, ed, e6)]
+            return projector
         if l1l2 not in self._mera_tensors:
             return self.Tensor(1)
         _, lp, config = self._mera_tensors[l1l2]
@@ -178,12 +185,6 @@ class Mera_EOM_with_x6_post(AbstractSystem):
             r = param[(l1, lp, "r")]
             omega = param[(l1, lp, "omega")]
             result = get_U(self.Tensor, self.D, r, omega, config)
-        if l1 == self.L1 - 1:
-            projector = self.Tensor(["D", "U"], [self.d, self.D]).zero()
-            for ed in range(self.d):
-                for e6 in range(6):
-                    projector[{"D": ed, "U": e6}] = param[("P", l2, ed, e6)]
-            result = result.contract(projector, {("D", "U")})
         return result
 
     def _clear_tensor(self, key):
