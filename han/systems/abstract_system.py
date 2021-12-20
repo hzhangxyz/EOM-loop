@@ -18,34 +18,35 @@
 
 import numpy as np
 import TAT
+import lazy
 from tetragono.auxiliaries import Auxiliaries
 
 
 class Param:
 
-    def __init__(self, owner):
-        self.owner = owner
+    def __getstate__(self):
+        return {key: node() for key, node in self.param.items()}
+
+    def __setstate__(self, state):
+        self.param = {}
+        for key, value in state.items():
+            self.add(key)
+            self[key] = value
+
+    def __init__(self):
+        self.param = {}
+
+    def add(self, key):
+        self.param[key] = lazy.Root()
 
     def __setitem__(self, key, value):
-        if key not in self.owner._parameter or self.owner._parameter[
-                key] != value:
-            self.owner._parameter[key] = value
-            for l1, l2 in self.owner._modified_tensor(key):
-                self.owner._real_clear_tensor(l1, l2)
+        self.param[key].reset(value)
 
     def __getitem__(self, key):
-        return self.owner._parameter[key]
+        return self.param[key]()
 
 
 class AbstractSystem:
-
-    def _get_tensor(self, l1l2, param=None):
-        # get tensors at l1 l2
-        raise NotImplementedError("not implemented in abstract system")
-
-    def _modified_tensor(self, key):
-        # get modified tensor position list when parameter key is changed
-        raise NotImplementedError("not implemented in abstract system")
 
     def __init__(self, L1, L2, Dc, Tensor):
         self.L1 = L1  # depth
@@ -53,10 +54,27 @@ class AbstractSystem:
         self.Dc = Dc
         self.Tensor = Tensor
 
-        self.parameter = Param(self)
-        self._parameter = {}  # dict[any, float]
-        self._tensors = {}  # dict[tuple[int, int], tensor|None]
+        self.parameter = Param()
+        self.tensor = [[lazy.Root() for l2 in range(L2)] for l1 in range(L1)]
         self.hamiltonians = {}  # dict[tuple[int, int], tensor]
+
+    def __setstate__(self, state):
+        for key, value in state.items():
+            setattr(self, key, value)
+        self.tensor = [
+            [lazy.Root() for l2 in range(self.L2)] for l1 in range(self.L1)
+        ]
+        self._construct_tensors()
+        self._construct_auxiliaries()
+
+    def __getstate__(self):
+        except_list = ["auxiliaries", "tensor"]
+        state = {
+            key: getattr(self, key)
+            for key in self.__dict__
+            if key not in except_list
+        }
+        return state
 
 
 class AbstractSamplingSystem(AbstractSystem):
@@ -256,55 +274,40 @@ class AbstractHoleSystem(AbstractSystem):
 
     def __init__(self, L1, L2, Dc, Tensor):
         super(AbstractHoleSystem, self).__init__(L1, L2, Dc, Tensor)
+        self._construct_auxiliaries()
 
-        self.auxiliaries = None
+    def __setstate__(self, state):
+        super().__setstate__(state)
 
-    def _real_clear_tensor(self, l1, l2):
-        self._tensors[(l1, l2)] = None
-        if self.auxiliaries is not None:
-            self.auxiliaries[(l1, l2)] = None
+    def _construct_auxiliaries(self):
+        self.auxiliaries = Auxiliaries(self.L1 * 2 + 1, self.L2, self.Dc, False,
+                                       self.Tensor)
+        for l1 in range(self.L1):
+            for l2 in range(self.L2):
+                tensor_node = lazy.Node(lambda x: x, self.tensor[l1][l2])
+                # tensor will be replaced later
+                """
+                auxiliaries:
+                0   X X X
+                ... .....
+                L-1 X X X
+                L   HHHHH
+                L+1 X X X
+                ... .....
+                L+L X X X
+                """
+                self.auxiliaries._lattice[l1][l2].replace(tensor_node)
 
-    def _set_auxiliaries(self, l1, l2):
-        l1l2 = (l1, l2)
-        tensor = self._tensors[l1l2]
-        """
-        auxiliaries:
-        0   X X X
-        ... .....
-        L-1 X X X
-        L   HHHHH
-        L+1 X X X
-        ... .....
-        L+L X X X
-        """
-        self.auxiliaries[l1, l2] = tensor
-        self.auxiliaries[2 * self.L1 - l1, l2] = tensor.edge_rename({
-            "U": "D",
-            "D": "U"
-        }).conjugate()
+                transposed_node = lazy.Node(
+                    lambda tensor: tensor.edge_rename({
+                        "U": "D",
+                        "D": "U"
+                    }).conjugate(), self.auxiliaries._lattice[l1][l2])
 
-    def __getitem__(self, l1l2):
-        if l1l2 not in self._tensors or self._tensors[l1l2] is None:
-            self._tensors[l1l2] = self._get_tensor(l1l2)
-            l1, l2 = l1l2
-            if self.auxiliaries is not None:
-                self._set_auxiliaries(l1, l2)
-        return self._tensors[l1l2]
-
-    def refresh_auxiliaries(self):
-        if self.auxiliaries is None:
-            self.auxiliaries = Auxiliaries(self.L1 * 2 + 1, self.L2, self.Dc,
-                                           False, self.Tensor)
-            for l1 in range(self.L1):
-                for l2 in range(self.L2):
-                    _ = self[l1, l2]
-                    self._set_auxiliaries(l1, l2)
-        else:
-            for l1 in range(self.L1):
-                for l2 in range(self.L2):
-                    _ = self[l1, l2]
+                self.auxiliaries._lattice[2 * self.L1 -
+                                          l1][l2].replace(transposed_node)
         for l2 in range(self.L2):
-            d = self[self.L1 - 1, l2].edges("D")
+            d = self.d
             i = self.Tensor(["U", "D"], [d, d]).identity({("U", "D")})
             self.auxiliaries[self.L1, l2] = i
 
@@ -356,7 +359,7 @@ class AbstractHoleSystem(AbstractSystem):
                     "I0": "U",
                     "O0": "D"
                 }).merge_edge({"R": ["I1", "O1"]})
-                d = self[self.L1 - 1, j].edges("D")
+                d = self.d
                 self.auxiliaries[self.L1, i + 1] = self.Tensor(
                     ["U", "LU", "D", "LD"], [d, d, d, d]).identity({
                         ("U", "LU"), ("D", "LD")
@@ -364,10 +367,10 @@ class AbstractHoleSystem(AbstractSystem):
 
                 this = self._collect_hole()
 
-                d = self[self.L1 - 1, j].edges("D")
+                d = self.d
                 iden = self.Tensor(["U", "D"], [d, d]).identity({("U", "D")})
                 self.auxiliaries[self.L1, j] = iden
-                d = self[self.L1 - 1, i].edges("D")
+                d = self.d
                 iden = self.Tensor(["U", "D"], [d, d]).identity({("U", "D")})
                 self.auxiliaries[self.L1, i] = iden
             if len(position) == 1:
@@ -379,7 +382,7 @@ class AbstractHoleSystem(AbstractSystem):
 
                 this = self._collect_hole()
 
-                d = self[self.L1 - 1, i].edges("D")
+                d = self.d
                 iden = self.Tensor(["U", "D"], [d, d]).identity({("U", "D")})
                 self.auxiliaries[self.L1, i] = iden
             for i, j in this.items():
@@ -400,21 +403,21 @@ class AbstractHoleSystem(AbstractSystem):
                     psipsi * psipsi) * 2 * hole_of_psipsi[l1l2]
         return result
 
-    def _grad_of_param(self):
+    def grad_of_param(self):
         grad_of_tensor = self._grad_of_tensor()
-        delta = 1e-3
+        delta = 1e-5
         result = {}
-        for k in self._parameter:
-            param = self._parameter.copy()
-            param[k] += delta
+        for k in self.parameter.param:
+            modified = self._modified_tensor(k)
+            original = {(l1, l2): self.tensor[l1][l2]() for l1, l2 in modified}
+            self.parameter[k] += delta
+            now = {(l1, l2): self.tensor[l1][l2]() for l1, l2 in modified}
+            self.parameter[k] -= delta
             param_grad = 0
-            for l1 in range(self.L1):
-                for l2 in range(self.L2):
-                    tensor_diff = (self._get_tensor(
-                        (l1, l2), param) - self[l1, l2]) / delta
-                    param_grad += float(
-                        tensor_diff.contract(
-                            grad_of_tensor[(l1, l2)],
-                            {(n, n) for n in tensor_diff.names}))
+            for l1, l2 in modified:
+                tensor_diff = (now[l1, l2] - original[l1, l2]) / delta
+                param_grad += float(
+                    tensor_diff.contract(grad_of_tensor[(l1, l2)],
+                                         {(n, n) for n in tensor_diff.names}))
             result[k] = param_grad
         return result

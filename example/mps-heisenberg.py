@@ -25,16 +25,14 @@ def update(file_name, count, step):
     with open(file_name, "rb") as file:
         lattice = pickle.load(file)
     for t in range(count):
-        lattice.refresh_auxiliaries()
         a, b = lattice._energies()
         print(t, a / b / lattice.L2)
         with open(file_name.replace(".dat", "") + ".log", "a") as file:
             print(t, a / b / lattice.L2, file=file)
-        gp = lattice._grad_of_param()
+        gp = lattice.grad_of_param()
         for k in gp:
             lattice.parameter[k] -= float(step) * gp[k]
         with open(file_name, "wb") as file:
-            lattice.auxiliaries = None
             pickle.dump(lattice, file)
 
 
