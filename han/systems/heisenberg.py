@@ -20,8 +20,8 @@ from .abstract_system import AbstractSystem
 class Heisenberg(AbstractSystem):
 
     def __init__(self, *args, **kwargs):
-        super(Heisenberg, self).__init__(*args, **kwargs)
         self.d = 2
+        super(Heisenberg, self).__init__(*args, **kwargs)
         self._set_hamiltonian()
 
     def _set_hamiltonian(self):

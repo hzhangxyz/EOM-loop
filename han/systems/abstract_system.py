@@ -18,33 +18,35 @@
 
 import numpy as np
 import TAT
+import lazy
 from tetragono.auxiliaries import Auxiliaries
 
 
 class Param:
 
-    def __init__(self, owner):
-        self.owner = owner
+    def __getstate__(self):
+        return {key: node() for key, node in self.param.items()}
+
+    def __setstate__(self, state):
+        self.param = {}
+        for key, value in state.items():
+            self.add(key)
+            self[key] = value
+
+    def __init__(self):
+        self.param = {}
+
+    def add(self, key):
+        self.param[key] = lazy.Root()
 
     def __setitem__(self, key, value):
-        if key not in self.owner._parameter or self.owner._parameter[
-                key] != value:
-            self.owner._parameter[key] = value
-            self.owner._clear_tensor(key)
+        self.param[key].reset(value)
 
     def __getitem__(self, key):
-        return self.owner._parameter[key]
+        return self.param[key]()
 
 
 class AbstractSystem:
-
-    def _get_tensor(self, l1l2, param=None):
-        # get tensors at l1 l2
-        raise NotImplementedError("not implemented in abstract system")
-
-    def _clear_tensor(self, key):
-        # set tensors related to key to none
-        raise NotImplementedError("not implemented in abstract system")
 
     def __init__(self, L1, L2, Dc, Tensor):
         self.L1 = L1  # depth
@@ -52,198 +54,249 @@ class AbstractSystem:
         self.Dc = Dc
         self.Tensor = Tensor
 
-        self.parameter = Param(self)
-        self._parameter = {}  # dict[any, float]
-        self._tensors = {}  # dict[tuple[int, int], tensor|None]
+        self.parameter = Param()
+        self.tensor = [[lazy.Root() for l2 in range(L2)] for l1 in range(L1)]
         self.hamiltonians = {}  # dict[tuple[int, int], tensor]
+
+    def __setstate__(self, state):
+        for key, value in state.items():
+            setattr(self, key, value)
+        self.tensor = [
+            [lazy.Root() for l2 in range(self.L2)] for l1 in range(self.L1)
+        ]
+        self._construct_tensors()
+        self._construct_auxiliaries()
+
+    def __getstate__(self):
+        except_list = ["auxiliaries", "tensor", "configuration"]
+        state = {
+            key: getattr(self, key)
+            for key in self.__dict__
+            if key not in except_list
+        }
+        return state
 
 
 class AbstractSamplingSystem(AbstractSystem):
 
     def __init__(self, L1, L2, Dc, Tensor):
-        super(AbstractSamplingSystem, self).__init__(L1, L2, Dc, Tensor)
-        self.aux = None
-        self.gen01 = None
         # 约定：有且仅有最外面一层经典Tensor层, and it has only two edge: U and D
-        # Design:
-        # s = get_new_configuration() # without classical tensor, may return None
-        # ss.append(s)
-        #
-        # for s1 in ss:
-        #   for s2 in ss:
-        #     es.append(energy(s1, s2))
-        # e = mean(es)
-        # not support grad inside
+        super(AbstractSamplingSystem, self).__init__(L1, L2, Dc, Tensor)
+        self._construct_auxiliaries()
 
-    def _real_clear_tensor(self, l1, l2):
-        self._tensors[(l1, l2)] = None
+    def _construct_auxiliaries(self):
+        # when copy aux, need to copy conf togethor
+        self.configuration = [lazy.Root() for l2 in range(self.L2)]
 
-    def __getitem__(self, l1l2):
-        if l1l2 not in self._tensors or self._tensors[l1l2] is None:
-            self._tensors[l1l2] = self._get_tensor(l1l2)
-        return self._tensors[l1l2]
+        self.auxiliaries = {}
 
-    def energy_ss(self, s1, s2):
-        L1 = self.L1
-        L2 = self.L2
-        p1 = [self[L1 - 1, l2].shrink({"U": s1[l2]}) for l2 in range(L2)]
-        p2 = [self[L1 - 1, l2].shrink({"U": s2[l2]}) for l2 in range(L2)]
-        n12 = [
-            p1[l2].contract(p2[l2].conjugate(), {("D", "D")})
-            for l2 in range(L2)
-        ]
-        total_e = 0.
-        for positions, hamiltonian in self.hamiltonians.items():
-            this_e = hamiltonian
-            for index, position in enumerate(positions):
-                this_e = this_e.contract(p1[position], {(f"I{index}", "D")})
-                this_e = this_e.contract(p2[position], {(f"O{index}", "D")})
-            for l2 in range(L2):
-                if l2 not in positions:
-                    this_e = this_e.contract(n12[l2], set())
-            total_e += float(this_e)
-        den = self.Tensor(1)
-        for l2 in range(L2):
-            den = den.contract(n12[l2], set())
-        return total_e, float(den)
-
-    def new_aux(self):
-        self.aux = Auxiliaries(self.L1 * 2 - 2, self.L2, self.Dc, False,
-                               self.Tensor)
-        # 上下对称这一点没有用到，在测量过程中存在浪费
+        self.auxiliaries[1] = Auxiliaries(self.L1 - 1, self.L2, self.Dc, False,
+                                          self.Tensor)
+        self.auxiliaries[2] = Auxiliaries(self.L1 * 2 - 2, self.L2, self.Dc,
+                                          False, self.Tensor)
         for l1 in range(self.L1 - 1):
             for l2 in range(self.L2):
-                tensor = self[l1, l2]
-                self.aux[l1, l2] = tensor
-                self.aux[2 * self.L1 - l1 - 3, l2] = tensor.edge_rename({
-                    "U": "D",
-                    "D": "U"
-                }).conjugate()
+                if l1 == self.L1 - 2:
+                    tensor_node = lazy.Node(
+                        lambda tensor, conf: tensor.shrink({"D": conf})
+                        if conf is not None else tensor, self.tensor[l1][l2],
+                        self.configuration[l2])
+                else:
+                    tensor_node = lazy.Node(lambda tensor: tensor,
+                                            self.tensor[l1][l2])
+                self.auxiliaries[1]._lattice[l1][l2].replace(tensor_node)
+                self.auxiliaries[2]._lattice[l1][l2].replace(tensor_node)
+                transposed_node = lazy.Node(
+                    lambda tensor: tensor.edge_rename({
+                        "U": "D",
+                        "D": "U"
+                    }).conjugate(), self.auxiliaries[2]._lattice[l1][l2])
+                self.auxiliaries[2]._lattice[2 * self.L1 - l1 -
+                                             3][l2].replace(transposed_node)
 
-    def get_configuration(self):
-        # s ~ w(s)^2
-        p = 1.
-        aux = self.aux.copy()
-        ss = []
+    def _construct_branch(self, s1, s2, pool):
+        # s1 and s2 will not change -> opt it
+        s1 = [s() for s in s1]
+        s2 = [s() for s in s2]
+        L1 = self.L1
+        L2 = self.L2
+        for l2 in range(L2):
+            key = "s", l2, s1[l2]
+            if key not in pool:
+                pool[key] = lazy.Node(
+                    lambda tensor, conf: tensor.shrink({"U": conf}),
+                    self.tensor[L1 - 1][l2], s1[l2])
+        p1 = [pool["s", l2, s1[l2]] for l2 in range(L2)]
+        for l2 in range(L2):
+            key = "s", l2, s2[l2]
+            if key not in pool:
+                pool[key] = lazy.Node(
+                    lambda tensor, conf: tensor.shrink({"U": conf}),
+                    self.tensor[L1 - 1][l2], s2[l2])
+        p2 = [pool["s", l2, s2[l2]] for l2 in range(L2)]
+        for l2 in range(L2):
+            key = "d", l2, s1[l2], s2[l2]
+            if key not in pool:
+                pool[key] = lazy.Node(
+                    lambda a, b: float(a.contract(b, {("D", "D")})),
+                    p1[l2],
+                    p2[l2],
+                )
+        n12 = [pool["d", l2, s1[l2], s2[l2]] for l2 in range(L2)]
+
+        es = {}
+        for positions, hamiltonian in self.hamiltonians.items():
+            ps1 = tuple(s1[p] for p in positions)
+            ps2 = tuple(s2[p] for p in positions)
+            key = "h", positions, ps1, ps2
+            if key not in pool:
+                pool[key] = lazy.Node(
+                    self._get_branch_core,
+                    hamiltonian,
+                    *(p1[p] for p in positions),
+                    *(p2[p] for p in positions),
+                    *(n12[p] for p in positions),
+                )
+            es[positions] = pool[key]
+
+        e = lazy.Node(lambda *v: np.sum(v), *es.values())
+        den = lazy.Node(lambda *v: np.prod(v), *n12)
+
+        return (p1, p2, n12, es, e, den)
+
+    def _get_branch_core(self, H, *args):
+        result = H
+        rank = H.rank // 2
+        for index in range(rank):
+            p1 = args[index]
+            p2 = args[index + rank]
+            n12 = args[index + rank * 2]
+            result = result.contract(p1, {(f"I{index}", "D")})
+            result = result.contract(p2, {(f"O{index}", "D")})
+            result /= n12
+        return float(result)
+
+    def energy_ss(self, branch, changed=None):
+        p1, p2, n12, es, e, den = branch
+        if changed is not None:
+            cp, l2 = changed
+            cp(p1[l2])
+            cp(p2[l2])
+            cp(n12[l2])
+            for k in es:
+                cp(es[k])
+            e = cp(e)
+            den = cp(den)
+        return e(), den()
+
+    def clear_configuration(self):
         for l2 in range(self.L2):
-            up_to_down = aux._inline_up_to_down[self.L1 - 2, l2]()
-            down_to_up = aux._inline_down_to_up[self.L1 - 1, l2]()
+            self.configuration[l2].reset()
+
+    def get_configuration(self, gen01):
+        cp = lazy.Copy()
+        conf = [cp(s) for s in self.configuration]
+        aux1 = self.auxiliaries[1].copy(cp)
+        aux2 = self.auxiliaries[2].copy(cp)
+        # s ~ w(s)^2
+        possibility = 1.
+        for l2 in range(self.L2):
+            up_to_down = aux2._inline_up_to_down[self.L1 - 2, l2]()
+            down_to_up = aux2._inline_down_to_up[self.L1 - 1, l2]()
             rho = down_to_up.contract(up_to_down,
                                       {("U1", "D1"),
                                        ("U3", "D3")}).blocks[["U2", "D2"]]
             rho = np.diagonal(rho).copy()
             rho[rho < 0] = 0  # 数值误差
             rho = rho / np.sum(rho)
-            this_s = self.choice(rho)
-            p *= rho[this_s]
-            aux[self.L1 - 2, l2] = aux[self.L1 - 2, l2].shrink({"D": this_s})
-            aux[self.L1 - 1, l2] = aux[self.L1 - 1, l2].shrink({"U": this_s})
-            ss.append(this_s)
-        return ss, aux, p
+            this_s = self.choice(gen01(), rho)
+            possibility *= rho[this_s]
+            conf[l2].reset(this_s)
+        # This lazy node also depend on tensor and param, it only copy conf and aux
+        return possibility, conf, aux1, aux2
 
-    def get_configurations(self, length):
-        self.gen01 = TAT.random.uniform_real(0, 1)
-        self.new_aux()
+    def get_configurations(self, gen01, length):
+        data = [self.get_configuration(gen01) for _ in range(length)]
+        confs = [[s() for s in c] for _, c, _, _ in data]
 
-        ssb = [self.get_configuration() for _ in range(length)]
-        # [([s], aux, p)]
-        sss = [ss for ss, aux, p in ssb]
-        auxs = [aux for ss, aux, p in ssb]
-        old_p = [p for ss, aux, p in ssb]
+        conf_uniq, conf_index, conf_count = np.unique(confs,
+                                                      return_index=True,
+                                                      return_counts=True,
+                                                      axis=0)
+        # poss, conf, aux1, aux2, count
+        return [(data[i][0], data[i][1], data[i][2], data[i][3], c)
+                for i, c in zip(conf_index, conf_count)]
 
-        sss_uniq, sss_index, sss_count = np.unique(sss,
-                                                   return_index=True,
-                                                   return_counts=True,
-                                                   axis=0)
-        sss_aux = [auxs[i] for i in sss_index]
-        sss_oldp = [old_p[i] for i in sss_index]
-        sss_oldp = np.array(sss_oldp)
-        sss_oldp /= np.sum(sss_oldp)
+    def _get_branchs(self, data):
+        pool = {}
+        return [[
+            self._construct_branch(s1, s2, pool) for _, s2, _, _, _ in data
+        ] for _, s1, _, _, _ in data]
 
-        self.gen01 = None
-        self.aux = None
-        return list(zip(sss_uniq, sss_aux, sss_oldp,
-                        sss_count))  # [([s], aux, old_p, count)]
+    def energy(self, data, branchs=None, changed=None):
+        change_classical = change_quantum = False
+        if changed is not None:
+            cp, l1, l2 = changed
+            if l1 == self.L1 - 1:
+                change_classical = True
+            else:
+                change_quantum = True
 
-    def energy(self, ssb, hint=1):
+        if branchs is None:
+            branchs = self._get_branchs(data)
         num = 0.
         den = 0.
 
+        total_count = sum(count for p, conf, aux1, aux2, count in data)
+
         # the possibility it should be
-        sss_newp = np.array([
-            float(aux.hole((), hint=("V", hint)))
-            for ss, aux, oldp, count in ssb
-        ])
-        sss_uniq = [ss for ss, aux, oldp, count in ssb]
-        sss_count = [count for ss, aux, oldp, count in ssb]
+        wss = []
+        for p, conf, aux1, aux2, count in data:
+            replacement = {}
+            if change_quantum:
+                replacement[l1, l2] = cp(aux1._lattice[l1][l2])()
+            result = aux1.replace(replacement)
+            wss.append(abs(float(result)))
+        # This abs is the reason to use sampling
 
-        # P -> sqrt(P)
-        # P N -> sqrt(P) N
-        sss_newp = np.sqrt(sss_newp)
-        sss_newp /= np.sum(sss_newp)
-
-        for [s1, _, p1, n1], q1 in zip(ssb, sss_newp):
-            for [s2, _, p2, n2], q2 in zip(ssb, sss_newp):
-                n, d = self.energy_ss(s1, s2)
-                # print(p1, p2, q1, q2)
+        cls_change = None
+        if change_classical:
+            cls_change = cp, l2
+        for i1, [[p1, s1, _, _, n1], q1] in enumerate(zip(data, wss)):
+            for i2, [[p2, s2, _, _, n2], q2] in enumerate(zip(data, wss)):
+                branch = branchs[i1][i2]
+                e, d = self.energy_ss(branch, cls_change)
                 p = (n1 * n2) * (q1 * q2) / (p1 * p2)
-                num += n * p
-                den += d * p
-        return num / den
+                dp = d * p
+                num += e * dp
+                den += dp
+        return num / den, branchs
 
-    def _grad_of_param(self, ssb, energy):
+    # It is complex to compute grad of tensor here, so calculate grad of param directly
+
+    def grad_of_param(self, data, energy, branchs):
         delta = 1e-3
         result = {}
-        for k in self._parameter:
-            param_rec = self._parameter.copy()
+        for k in self.parameter.param:
+            modified = self._modified_tensor(k)
+            if len(modified) != 1:
+                raise NotImplementedError(
+                    "Not work if multiple modified tensor")
+            l1, l2 = modified[0]
 
-            self.parameter[k] += delta  # some tensor become None
-            for l1 in range(self.L1 - 1):
-                for l2 in range(self.L2):
-                    if self._tensors[l1, l2] == None:
-                        up_to_down = self[l1, l2]
-                        down_to_up = up_to_down.edge_rename({
-                            "U": "D",
-                            "D": "U"
-                        }).conjugate()
-
-                        for ss, aux, oldp, count in ssb:
-                            if l1 == self.L1 - 2:
-                                this_s = ss[l2]
-                                aux[l1, l2] = up_to_down.shrink({"D": this_s})
-                                aux[2 * self.L1 - l1 - 3,
-                                    l2] = down_to_up.shrink({"U": this_s})
-                            else:
-                                aux[l1, l2] = up_to_down
-                                aux[2 * self.L1 - l1 - 3, l2] = down_to_up
-
-            new_energy = self.energy(ssb)
-
-            self.parameter[k] -= delta
-            for l1 in range(self.L1 - 1):
-                for l2 in range(self.L2):
-                    if self._tensors[l1, l2] == None:
-                        up_to_down = self[l1, l2]
-                        down_to_up = up_to_down.edge_rename({
-                            "U": "D",
-                            "D": "U"
-                        }).conjugate()
-
-                        for ss, aux, oldp, count in ssb:
-                            if l1 == self.L1 - 2:
-                                this_s = ss[l2]
-                                aux[l1, l2] = up_to_down.shrink({"D": this_s})
-                                aux[2 * self.L1 - l1 - 3,
-                                    l2] = down_to_up.shrink({"U": this_s})
-                            else:
-                                aux[l1, l2] = up_to_down
-                                aux[2 * self.L1 - l1 - 3, l2] = down_to_up
-
+            cp = lazy.Copy()
+            new_param = cp(self.parameter.param[k])
+            new_param.reset(new_param() + delta)
+            cp(self.tensor[l1][l2])
+            new_energy, _ = self.energy(
+                data,
+                branchs=branchs,
+                changed=(cp, l1, l2),
+            )
             result[k] = (new_energy - energy) / delta
         return result
 
-    def choice(self, rho):
-        p = self.gen01()
+    def choice(self, p, rho):
         for i, r in enumerate(rho):
             p -= r
             if p < 0:
@@ -255,55 +308,40 @@ class AbstractHoleSystem(AbstractSystem):
 
     def __init__(self, L1, L2, Dc, Tensor):
         super(AbstractHoleSystem, self).__init__(L1, L2, Dc, Tensor)
+        self._construct_auxiliaries()
 
-        self.auxiliaries = None
+    def __setstate__(self, state):
+        super().__setstate__(state)
 
-    def _real_clear_tensor(self, l1, l2):
-        self._tensors[(l1, l2)] = None
-        if self.auxiliaries is not None:
-            self.auxiliaries[(l1, l2)] = None
+    def _construct_auxiliaries(self):
+        self.auxiliaries = Auxiliaries(self.L1 * 2 + 1, self.L2, self.Dc, False,
+                                       self.Tensor)
+        for l1 in range(self.L1):
+            for l2 in range(self.L2):
+                tensor_node = lazy.Node(lambda x: x, self.tensor[l1][l2])
+                # tensor will be replaced later
+                """
+                auxiliaries:
+                0   X X X
+                ... .....
+                L-1 X X X
+                L   HHHHH
+                L+1 X X X
+                ... .....
+                L+L X X X
+                """
+                self.auxiliaries._lattice[l1][l2].replace(tensor_node)
 
-    def _set_auxiliaries(self, l1, l2):
-        l1l2 = (l1, l2)
-        tensor = self._tensors[l1l2]
-        """
-        auxiliaries:
-        0   X X X
-        ... .....
-        L-1 X X X
-        L   HHHHH
-        L+1 X X X
-        ... .....
-        L+L X X X
-        """
-        self.auxiliaries[l1, l2] = tensor
-        self.auxiliaries[2 * self.L1 - l1, l2] = tensor.edge_rename({
-            "U": "D",
-            "D": "U"
-        }).conjugate()
+                transposed_node = lazy.Node(
+                    lambda tensor: tensor.edge_rename({
+                        "U": "D",
+                        "D": "U"
+                    }).conjugate(), self.auxiliaries._lattice[l1][l2])
 
-    def __getitem__(self, l1l2):
-        if l1l2 not in self._tensors or self._tensors[l1l2] is None:
-            self._tensors[l1l2] = self._get_tensor(l1l2)
-            l1, l2 = l1l2
-            if self.auxiliaries is not None:
-                self._set_auxiliaries(l1, l2)
-        return self._tensors[l1l2]
-
-    def refresh_auxiliaries(self):
-        if self.auxiliaries is None:
-            self.auxiliaries = Auxiliaries(self.L1 * 2 + 1, self.L2, self.Dc,
-                                           False, self.Tensor)
-            for l1 in range(self.L1):
-                for l2 in range(self.L2):
-                    _ = self[l1, l2]
-                    self._set_auxiliaries(l1, l2)
-        else:
-            for l1 in range(self.L1):
-                for l2 in range(self.L2):
-                    _ = self[l1, l2]
+                self.auxiliaries._lattice[2 * self.L1 -
+                                          l1][l2].replace(transposed_node)
         for l2 in range(self.L2):
-            d = self[self.L1 - 1, l2].edges("D")
+            d = self.d
             i = self.Tensor(["U", "D"], [d, d]).identity({("U", "D")})
             self.auxiliaries[self.L1, l2] = i
 
@@ -355,7 +393,7 @@ class AbstractHoleSystem(AbstractSystem):
                     "I0": "U",
                     "O0": "D"
                 }).merge_edge({"R": ["I1", "O1"]})
-                d = self[self.L1 - 1, j].edges("D")
+                d = self.d
                 self.auxiliaries[self.L1, i + 1] = self.Tensor(
                     ["U", "LU", "D", "LD"], [d, d, d, d]).identity({
                         ("U", "LU"), ("D", "LD")
@@ -363,10 +401,10 @@ class AbstractHoleSystem(AbstractSystem):
 
                 this = self._collect_hole()
 
-                d = self[self.L1 - 1, j].edges("D")
+                d = self.d
                 iden = self.Tensor(["U", "D"], [d, d]).identity({("U", "D")})
                 self.auxiliaries[self.L1, j] = iden
-                d = self[self.L1 - 1, i].edges("D")
+                d = self.d
                 iden = self.Tensor(["U", "D"], [d, d]).identity({("U", "D")})
                 self.auxiliaries[self.L1, i] = iden
             if len(position) == 1:
@@ -378,7 +416,7 @@ class AbstractHoleSystem(AbstractSystem):
 
                 this = self._collect_hole()
 
-                d = self[self.L1 - 1, i].edges("D")
+                d = self.d
                 iden = self.Tensor(["U", "D"], [d, d]).identity({("U", "D")})
                 self.auxiliaries[self.L1, i] = iden
             for i, j in this.items():
@@ -399,21 +437,21 @@ class AbstractHoleSystem(AbstractSystem):
                     psipsi * psipsi) * 2 * hole_of_psipsi[l1l2]
         return result
 
-    def _grad_of_param(self):
+    def grad_of_param(self):
         grad_of_tensor = self._grad_of_tensor()
-        delta = 1e-3
+        delta = 1e-5
         result = {}
-        for k in self._parameter:
-            param = self._parameter.copy()
-            param[k] += delta
+        for k in self.parameter.param:
+            modified = self._modified_tensor(k)
+            original = {(l1, l2): self.tensor[l1][l2]() for l1, l2 in modified}
+            self.parameter[k] += delta
+            now = {(l1, l2): self.tensor[l1][l2]() for l1, l2 in modified}
+            self.parameter[k] -= delta
             param_grad = 0
-            for l1 in range(self.L1):
-                for l2 in range(self.L2):
-                    tensor_diff = (self._get_tensor(
-                        (l1, l2), param) - self[l1, l2]) / delta
-                    param_grad += float(
-                        tensor_diff.contract(
-                            grad_of_tensor[(l1, l2)],
-                            {(n, n) for n in tensor_diff.names}))
+            for l1, l2 in modified:
+                tensor_diff = (now[l1, l2] - original[l1, l2]) / delta
+                param_grad += float(
+                    tensor_diff.contract(grad_of_tensor[(l1, l2)],
+                                         {(n, n) for n in tensor_diff.names}))
             result[k] = param_grad
         return result

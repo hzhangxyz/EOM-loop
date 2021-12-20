@@ -17,6 +17,7 @@
 #
 
 import TAT
+import lazy
 from ..utility.storage_function import StorageFunction
 from .abstract_system import AbstractSystem
 from ..utility.tensor_U import tensor_U
@@ -49,18 +50,34 @@ class MPS_EOM_with_x4_post(AbstractSystem):
                                                    Tensor)
         self.D = D
 
-    def _get_tensor(self, l1l2, param=None):
-        if param is None:
-            param = self._parameter
-        l1, l2 = l1l2
-        if l1 == self.L1 - 1:
-            projector = self.Tensor(["D", "U"], [self.d, self.D]).zero()
-            for ed in range(self.d):
+        self._construct_params()
+        self._construct_tensors()
+
+    def _construct_params(self):
+        for l1 in range(self.L1 - 1):
+            for l2 in range(self.L2):
+                self.parameter.add(("r", l1, l2))
+                self.parameter.add(("omega", l1, l2))
+        for l2 in range(self.L2):
+            for ed in range(2):
                 for e4 in range(4):
-                    projector[{"D": ed, "U": e4}] = param[("P", l2, ed, e4)]
-            return projector
-        r = param[(l1, l2, "r")]
-        omega = param[(l1, l2, "omega")]
+                    self.parameter.add(("P", l2, ed, e4))
+
+    def _construct_tensors(self):
+        for l1 in range(self.L1):
+            for l2 in range(self.L2):
+                self._construct_tensor(l1, l2)
+
+    def _construct_projector_tensor(self, l2, *args):
+        projector = self.Tensor(["D", "U"], [self.d, self.D]).zero()
+        i = 0
+        for ed in range(self.d):
+            for e4 in range(4):
+                projector[{"D": ed, "U": e4}] = args[i]
+                i += 1
+        return projector
+
+    def _construct_normal_tensor(self, l1, l2, r, omega):
         shrink = set()
         if l1 == 0:
             shrink.add("U")
@@ -71,10 +88,40 @@ class MPS_EOM_with_x4_post(AbstractSystem):
         result = get_U(self.Tensor, self.D, r, omega, tuple(shrink))
         return result
 
-    def _clear_tensor(self, key):
+    def _construct_tensor(self, l1, l2):
+        if l1 == self.L1 - 1:
+            args = [
+                self.parameter.param["P", l2, ed, e4]
+                for ed in range(self.d)
+                for e4 in range(4)
+            ]
+            self.tensor[l1][l2].replace(
+                lazy.Node(self._construct_projector_tensor, l2, *args))
+        else:
+            self.tensor[l1][l2].replace(
+                lazy.Node(self._construct_normal_tensor, l1, l2,
+                          self.parameter.param["r", l1, l2],
+                          self.parameter.param["omega", l1, l2]))
+
+    def _modified_tensor(self, key):
         if len(key) == 3:
-            l1, l2, param = key
-            self._real_clear_tensor(l1, l2)
+            romega, l1, l2 = key
+            return [(l1, l2)]
         if len(key) == 4:
             _, l2, ed, e4 = key
-            self._real_clear_tensor(self.L1 - 1, l2)
+            return [(self.L1 - 1, l2)]
+
+    def generate_initial_state(self, seed):
+        TAT.random.seed(seed)
+        uni1 = TAT.random.uniform_real(-1, +1)
+        uni2 = TAT.random.uniform_real(-2, +2)
+        unipi = TAT.random.uniform_real(-3.14, +3.14)
+
+        for l1 in range(self.L1 - 1):
+            for l2 in range(self.L2):
+                self.parameter["r", l1, l2] = uni2()
+                self.parameter["omega", l1, l2] = unipi()
+        for l2 in range(self.L2):
+            for ed in range(2):
+                for e4 in range(4):
+                    self.parameter["P", l2, ed, e4] = uni1()
