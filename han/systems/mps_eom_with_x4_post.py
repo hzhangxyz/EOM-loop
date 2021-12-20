@@ -59,8 +59,8 @@ class MPS_EOM_with_x4_post(AbstractSystem):
                 for e4 in range(4):
                     projector[{"D": ed, "U": e4}] = param[("P", l2, ed, e4)]
             return projector
-        r = param[(l1, l2, "r")]
-        omega = param[(l1, l2, "omega")]
+        r = param[("r", l1, l2)]
+        omega = param[("omega", l1, l2)]
         shrink = set()
         if l1 == 0:
             shrink.add("U")
@@ -71,10 +71,25 @@ class MPS_EOM_with_x4_post(AbstractSystem):
         result = get_U(self.Tensor, self.D, r, omega, tuple(shrink))
         return result
 
-    def _clear_tensor(self, key):
+    def _modified_tensor(self, key):
         if len(key) == 3:
-            l1, l2, param = key
-            self._real_clear_tensor(l1, l2)
+            romega, l1, l2 = key
+            return [(l1, l2)]
         if len(key) == 4:
             _, l2, ed, e4 = key
-            self._real_clear_tensor(self.L1 - 1, l2)
+            return [(self.L1 - 1, l2)]
+
+    def generate_initial_state(self, seed):
+        TAT.random.seed(seed)
+        uni1 = TAT.random.uniform_real(-1, +1)
+        uni2 = TAT.random.uniform_real(-2, +2)
+        unipi = TAT.random.uniform_real(-3.14, +3.14)
+
+        for l1 in range(self.L1 - 1):
+            for l2 in range(self.L2):
+                self.parameter["r", l1, l2] = uni2()
+                self.parameter["omega", l1, l2] = unipi()
+        for l2 in range(self.L2):
+            for ed in range(2):
+                for e4 in range(4):
+                    self.parameter["P", l2, ed, e4] = uni1()

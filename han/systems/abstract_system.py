@@ -30,7 +30,8 @@ class Param:
         if key not in self.owner._parameter or self.owner._parameter[
                 key] != value:
             self.owner._parameter[key] = value
-            self.owner._clear_tensor(key)
+            for l1, l2 in self.owner._modified_tensor(key):
+                self.owner._real_clear_tensor(l1, l2)
 
     def __getitem__(self, key):
         return self.owner._parameter[key]
@@ -42,8 +43,8 @@ class AbstractSystem:
         # get tensors at l1 l2
         raise NotImplementedError("not implemented in abstract system")
 
-    def _clear_tensor(self, key):
-        # set tensors related to key to none
+    def _modified_tensor(self, key):
+        # get modified tensor position list when parameter key is changed
         raise NotImplementedError("not implemented in abstract system")
 
     def __init__(self, L1, L2, Dc, Tensor):

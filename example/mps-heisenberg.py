@@ -16,19 +16,7 @@ def create(file_name, depth, length, D, Dc, seed):
                              Dc=Dc,
                              Tensor=TAT.No.D.Tensor)
 
-    TAT.random.seed(seed)
-    uni1 = TAT.random.uniform_real(-1, +1)
-    uni2 = TAT.random.uniform_real(-2, +2)
-    unipi = TAT.random.uniform_real(-3.14, +3.14)
-
-    for l1 in range(lattice.L1 - 1):
-        for l2 in range(lattice.L2):
-            lattice.parameter[l1, l2, "r"] = uni2()
-            lattice.parameter[l1, l2, "omega"] = unipi()
-    for l2 in range(lattice.L2):
-        for ed in range(2):
-            for e4 in range(4):
-                lattice.parameter["P", l2, ed, e4] = uni1()
+    lattice.generate_initial_state(seed)
     with open(file_name, "wb") as file:
         pickle.dump(lattice, file)
 
