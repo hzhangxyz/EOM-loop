@@ -110,31 +110,50 @@ class AbstractSamplingSystem(AbstractSystem):
                 self.auxiliaries[2]._lattice[2 * self.L1 - l1 -
                                              3][l2].replace(transposed_node)
 
-    def _construct_branch(self, s1, s2):
+    def _construct_branch(self, s1, s2, pool):
+        # s1 and s2 will not change -> opt it
+        s1 = [s() for s in s1]
+        s2 = [s() for s in s2]
         L1 = self.L1
         L2 = self.L2
-        p1 = [
-            lazy.Node(lambda tensor, conf: tensor.shrink({"U": conf}),
-                      self.tensor[L1 - 1][l2], s1[l2]) for l2 in range(L2)
-        ]
-        p2 = [
-            lazy.Node(lambda tensor, conf: tensor.shrink({"U": conf}),
-                      self.tensor[L1 - 1][l2], s2[l2]) for l2 in range(L2)
-        ]
-        n12 = [
-            lazy.Node(lambda a, b: float(a.contract(b, {("D", "D")})), pp1, pp2)
-            for pp1, pp2 in zip(p1, p2)
-        ]
+        for l2 in range(L2):
+            key = "s", l2, s1[l2]
+            if key not in pool:
+                pool[key] = lazy.Node(
+                    lambda tensor, conf: tensor.shrink({"U": conf}),
+                    self.tensor[L1 - 1][l2], s1[l2])
+        p1 = [pool["s", l2, s1[l2]] for l2 in range(L2)]
+        for l2 in range(L2):
+            key = "s", l2, s2[l2]
+            if key not in pool:
+                pool[key] = lazy.Node(
+                    lambda tensor, conf: tensor.shrink({"U": conf}),
+                    self.tensor[L1 - 1][l2], s2[l2])
+        p2 = [pool["s", l2, s2[l2]] for l2 in range(L2)]
+        for l2 in range(L2):
+            key = "d", l2, s1[l2], s2[l2]
+            if key not in pool:
+                pool[key] = lazy.Node(
+                    lambda a, b: float(a.contract(b, {("D", "D")})),
+                    p1[l2],
+                    p2[l2],
+                )
+        n12 = [pool["d", l2, s1[l2], s2[l2]] for l2 in range(L2)]
 
         es = {}
         for positions, hamiltonian in self.hamiltonians.items():
-            es[positions] = lazy.Node(
-                self._get_branch_core,
-                hamiltonian,
-                *(p1[p] for p in positions),
-                *(p2[p] for p in positions),
-                *(n12[p] for p in positions),
-            )
+            ps1 = tuple(s1[p] for p in positions)
+            ps2 = tuple(s2[p] for p in positions)
+            key = "h", positions, ps1, ps2
+            if key not in pool:
+                pool[key] = lazy.Node(
+                    self._get_branch_core,
+                    hamiltonian,
+                    *(p1[p] for p in positions),
+                    *(p2[p] for p in positions),
+                    *(n12[p] for p in positions),
+                )
+            es[positions] = pool[key]
 
         e = lazy.Node(lambda *v: np.sum(v), *es.values())
         den = lazy.Node(lambda *v: np.prod(v), *n12)
@@ -204,6 +223,12 @@ class AbstractSamplingSystem(AbstractSystem):
         return [(data[i][0], data[i][1], data[i][2], data[i][3], c)
                 for i, c in zip(conf_index, conf_count)]
 
+    def _get_branchs(self, data):
+        pool = {}
+        return [[
+            self._construct_branch(s1, s2, pool) for _, s2, _, _, _ in data
+        ] for _, s1, _, _, _ in data]
+
     def energy(self, data, branchs=None, changed=None):
         change_classical = change_quantum = False
         if changed is not None:
@@ -214,9 +239,7 @@ class AbstractSamplingSystem(AbstractSystem):
                 change_quantum = True
 
         if branchs is None:
-            branchs = [[
-                self._construct_branch(s1, s2) for _, s2, _, _, _ in data
-            ] for _, s1, _, _, _ in data]
+            branchs = self._get_branchs(data)
         num = 0.
         den = 0.
 
