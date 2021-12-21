@@ -96,10 +96,14 @@ class AbstractSamplingSystem(AbstractSystem):
                                           False, self.Tensor)
         for l1 in range(self.L1 - 1):
             for l2 in range(self.L2):
-                tensor_node = lazy.Node(
-                    lambda tensor, conf: tensor.shrink({"D": conf})
-                    if l1 == self.L1 - 2 and conf is not None else tensor,
-                    self.tensor[l1][l2], self.configuration[l2])
+                if l1 == self.L1 - 2:
+                    tensor_node = lazy.Node(
+                        lambda tensor, conf: tensor.shrink({"D": conf})
+                        if conf is not None else tensor, self.tensor[l1][l2],
+                        self.configuration[l2])
+                else:
+                    tensor_node = lazy.Node(lambda tensor: tensor,
+                                            self.tensor[l1][l2])
                 self.auxiliaries[1]._lattice[l1][l2].replace(tensor_node)
                 self.auxiliaries[2]._lattice[l1][l2].replace(tensor_node)
                 transposed_node = lazy.Node(
