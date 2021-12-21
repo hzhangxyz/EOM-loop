@@ -21,16 +21,17 @@ def create(file_name, depth, length, D, Dc, seed):
 
 
 def update(file_name, count, step, sampling, seed):
-    TAT.random.seed(seed)
     with open(file_name, "rb") as file:
         lattice = pickle.load(file)
+    TAT.random.seed(seed)
+    gen01 = TAT.random.uniform_real(0, 1)
     for t in range(count):
-        ss = lattice.get_configurations(sampling)
+        ss = lattice.get_configurations(gen01, sampling)
         e = lattice.energy(ss)
         print(t, e / lattice.L2)
         with open(file_name.replace(".dat", "") + ".log", "a") as file:
             print(t, e / lattice.L2, file=file)
-        gp = lattice._grad_of_param(ss, e)
+        gp = lattice.grad_of_param(ss, e)
         for k in gp:
             lattice.parameter[k] -= float(step) * gp[k]
         with open(file_name, "wb") as file:
