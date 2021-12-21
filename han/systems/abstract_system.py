@@ -110,46 +110,61 @@ class AbstractSamplingSystem(AbstractSystem):
                 self.auxiliaries[2]._lattice[2 * self.L1 - l1 -
                                              3][l2].replace(transposed_node)
 
-    def energy_ss(self, s1, s2, changed=None):
-        # TODO.. opt
+    def _construct_branch(self, s1, s2):
         L1 = self.L1
         L2 = self.L2
         p1 = [
-            self.tensor[L1 - 1][l2]().blocks[["U", "D"]][s1[l2]()]
-            for l2 in range(L2)
+            lazy.Node(lambda tensor, conf: tensor.shrink({"U": conf}),
+                      self.tensor[L1 - 1][l2], s1[l2]) for l2 in range(L2)
         ]
         p2 = [
-            np.conjugate(self.tensor[L1 - 1][l2]().blocks[["U", "D"]][s2[l2]()])
-            for l2 in range(L2)
+            lazy.Node(lambda tensor, conf: tensor.shrink({"U": conf}),
+                      self.tensor[L1 - 1][l2], s2[l2]) for l2 in range(L2)
         ]
+        n12 = [
+            lazy.Node(lambda a, b: float(a.contract(b, {("D", "D")})), pp1, pp2)
+            for pp1, pp2 in zip(p1, p2)
+        ]
+
+        es = {}
+        for positions, hamiltonian in self.hamiltonians.items():
+            es[positions] = lazy.Node(
+                self._get_branch_core,
+                hamiltonian,
+                *(p1[p] for p in positions),
+                *(p2[p] for p in positions),
+                *(n12[p] for p in positions),
+            )
+
+        e = lazy.Node(lambda *v: np.sum(v), *es.values())
+        den = lazy.Node(lambda *v: np.prod(v), *n12)
+
+        return (p1, p2, n12, es, e, den)
+
+    def _get_branch_core(self, H, *args):
+        result = H
+        rank = H.rank // 2
+        for index in range(rank):
+            p1 = args[index]
+            p2 = args[index + rank]
+            n12 = args[index + rank * 2]
+            result = result.contract(p1, {(f"I{index}", "D")})
+            result = result.contract(p2, {(f"O{index}", "D")})
+            result /= n12
+        return float(result)
+
+    def energy_ss(self, branch, changed=None):
+        p1, p2, n12, es, e, den = branch
         if changed is not None:
             cp, l2 = changed
-            p1[l2] = cp(self.tensor[L1 - 1][l2])().blocks[["U", "D"]][s1[l2]()]
-            p2[l2] = np.conjugate(
-                cp(self.tensor[L1 - 1][l2])().blocks[["U", "D"]][s2[l2]()])
-        n12 = [p1[l2] @ p2[l2] for l2 in range(L2)]
-
-        total_e = 0.
-        for positions, hamiltonian in self.hamiltonians.items():
-            this_e = hamiltonian
-            for index, position in enumerate(positions):
-                pp1 = p1[position]
-                pp2 = p2[position]
-                tp1 = self.Tensor(["D"], [len(pp1)])
-                tp1.blocks[["D"]] = pp1
-                tp2 = self.Tensor(["D"], [len(pp2)])
-                tp2.blocks[["D"]] = pp2
-                this_e = this_e.contract(tp1, {(f"I{index}", "D")})
-                this_e = this_e.contract(tp2, {(f"O{index}", "D")})
-            this_e = float(this_e)
-            for l2 in range(L2):
-                if l2 not in positions:
-                    this_e *= n12[l2]
-            total_e += this_e
-        den = 1.
-        for l2 in range(L2):
-            den *= n12[l2]
-        return total_e, float(den)
+            cp(p1[l2])
+            cp(p2[l2])
+            cp(n12[l2])
+            for k in es:
+                cp(es[k])
+            e = cp(e)
+            den = cp(den)
+        return e(), den()
 
     def clear_configuration(self):
         for l2 in range(self.L2):
@@ -189,7 +204,7 @@ class AbstractSamplingSystem(AbstractSystem):
         return [(data[i][0], data[i][1], data[i][2], data[i][3], c)
                 for i, c in zip(conf_index, conf_count)]
 
-    def energy(self, data, changed=None):
+    def energy(self, data, branchs=None, changed=None):
         change_classical = change_quantum = False
         if changed is not None:
             cp, l1, l2 = changed
@@ -197,6 +212,11 @@ class AbstractSamplingSystem(AbstractSystem):
                 change_classical = True
             else:
                 change_quantum = True
+
+        if branchs is None:
+            branchs = [[
+                self._construct_branch(s1, s2) for _, s2, _, _, _ in data
+            ] for _, s1, _, _, _ in data]
         num = 0.
         den = 0.
 
@@ -215,13 +235,14 @@ class AbstractSamplingSystem(AbstractSystem):
         cls_change = None
         if change_classical:
             cls_change = cp, l2
-        for [p1, s1, _, _, n1], q1 in zip(data, wss):
-            for [p2, s2, _, _, n2], q2 in zip(data, wss):
-                n, d = self.energy_ss(s1, s2, cls_change)
-                # print(p1, p2, q1, q2)
+        for i1, [[p1, s1, _, _, n1], q1] in enumerate(zip(data, wss)):
+            for i2, [[p2, s2, _, _, n2], q2] in enumerate(zip(data, wss)):
+                branch = branchs[i1][i2]
+                e, d = self.energy_ss(branch, cls_change)
                 p = (n1 * n2) * (q1 * q2) / (p1 * p2)
-                num += n * p
-                den += d * p
+                dp = d * p
+                num += e * dp
+                den += dp
         return num / den
 
     # It is complex to compute grad of tensor here, so calculate grad of param directly
@@ -229,6 +250,9 @@ class AbstractSamplingSystem(AbstractSystem):
     def grad_of_param(self, data, energy):
         delta = 1e-3
         result = {}
+        branchs = [[self._construct_branch(s1, s2)
+                    for _, s2, _, _, _ in data]
+                   for _, s1, _, _, _ in data]
         for k in self.parameter.param:
             modified = self._modified_tensor(k)
             if len(modified) != 1:
@@ -240,7 +264,11 @@ class AbstractSamplingSystem(AbstractSystem):
             new_param = cp(self.parameter.param[k])
             new_param.reset(new_param() + delta)
             cp(self.tensor[l1][l2])
-            new_energy = self.energy(data, changed=(cp, l1, l2))
+            new_energy = self.energy(
+                data,
+                branchs=branchs,
+                changed=(cp, l1, l2),
+            )
             result[k] = (new_energy - energy) / delta
         return result
 
