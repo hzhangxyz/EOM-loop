@@ -27,11 +27,11 @@ def update(file_name, count, step, sampling, seed):
     gen01 = TAT.random.uniform_real(0, 1)
     for t in range(count):
         ss = lattice.get_configurations(gen01, sampling)
-        e = lattice.energy(ss)
+        e, branchs = lattice.energy(ss)
         print(t, e / lattice.L2)
         with open(file_name.replace(".dat", "") + ".log", "a") as file:
             print(t, e / lattice.L2, file=file)
-        gp = lattice.grad_of_param(ss, e)
+        gp = lattice.grad_of_param(ss, e, branchs)
         for k in gp:
             lattice.parameter[k] -= float(step) * gp[k]
         with open(file_name, "wb") as file:

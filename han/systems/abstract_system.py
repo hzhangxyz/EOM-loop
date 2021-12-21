@@ -243,16 +243,13 @@ class AbstractSamplingSystem(AbstractSystem):
                 dp = d * p
                 num += e * dp
                 den += dp
-        return num / den
+        return num / den, branchs
 
     # It is complex to compute grad of tensor here, so calculate grad of param directly
 
-    def grad_of_param(self, data, energy):
+    def grad_of_param(self, data, energy, branchs):
         delta = 1e-3
         result = {}
-        branchs = [[self._construct_branch(s1, s2)
-                    for _, s2, _, _, _ in data]
-                   for _, s1, _, _, _ in data]
         for k in self.parameter.param:
             modified = self._modified_tensor(k)
             if len(modified) != 1:
@@ -264,7 +261,7 @@ class AbstractSamplingSystem(AbstractSystem):
             new_param = cp(self.parameter.param[k])
             new_param.reset(new_param() + delta)
             cp(self.tensor[l1][l2])
-            new_energy = self.energy(
+            new_energy, _ = self.energy(
                 data,
                 branchs=branchs,
                 changed=(cp, l1, l2),
