@@ -17,6 +17,7 @@
 #
 
 import TAT
+import lazy
 from ..utility.storage_function import StorageFunction
 from .abstract_system import AbstractSystem
 from ..utility.tensor_U import tensor_U
@@ -103,10 +104,34 @@ class Mera_EOM_with_x6_post(AbstractSystem):
             length *= 2
         super(Mera_EOM_with_x6_post, self).__init__(depth + 1, length, Dc,
                                                     Tensor)
+        print(f"mera network depth {depth} length {length}")
         self.D = D
 
         self.layer = layer
         self._generate_structure()
+        self._construct_params()
+        self._construct_tensors()
+
+    def _construct_params(self):
+        LP = 1
+        for l1 in range(self.L1 - 1):
+            if l1 % 2 == 0:
+                if l1 != 0:
+                    LP *= 2
+            else:
+                LP += 1
+            for lp in range(LP):
+                self.parameter.add(("r", l1, lp))
+                self.parameter.add(("omega", l1, lp))
+        for l2 in range(self.L2):
+            for ed in range(2):
+                for e6 in range(6):
+                    self.parameter.add(("P", l2, ed, e6))
+
+    def _construct_tensors(self):
+        for l1 in range(self.L1):
+            for l2 in range(self.L2):
+                self.tensor[l1][l2].replace(self._construct_tensor(l1, l2))
 
     def _generate_structure(self):
         last_length = 1
@@ -162,36 +187,66 @@ class Mera_EOM_with_x6_post(AbstractSystem):
             if l1 % 2 == 1:
                 interval *= 2
 
-    def _get_tensor(self, l1l2, param=None):
-        if param is None:
-            param = self._parameter
-        l1, l2 = l1l2
+    def _construct_projector_tensor(self, l2, *args):
+        projector = self.Tensor(["D", "U"], [self.d, self.D]).zero()
+        i = 0
+        for ed in range(self.d):
+            for e6 in range(6):
+                projector[{"D": ed, "U": e6}] = args[i]
+                i += 1
+        return projector
+
+    def _construct_tensor(self, l1, l2):
         if l1 == self.L1 - 1:
-            projector = self.Tensor(["D", "U"], [self.d, self.D]).zero()
-            for ed in range(self.d):
-                for e6 in range(6):
-                    projector[{"D": ed, "U": e6}] = param[("P", l2, ed, e6)]
-            return projector
+            args = [
+                self.parameter.param["P", l2, ed, e6]
+                for ed in range(self.d)
+                for e6 in range(6)
+            ]
+            return lazy.Node(self._construct_projector_tensor, l2, *args)
+        l1l2 = l1, l2
         if l1l2 not in self._mera_tensors:
-            return self.Tensor(1)
+            return lazy.Root(self.Tensor(1))
         _, lp, config = self._mera_tensors[l1l2]
         if config == "IDLD":
-            result = self.Tensor(["L", "D"],
-                                 [self.D, self.D]).identity({("L", "D")})
+            return lazy.Root(
+                self.Tensor(["L", "D"],
+                            [self.D, self.D]).identity({("L", "D")}))
         elif config == "IDLR":
-            result = self.Tensor(["L", "R"],
-                                 [self.D, self.D]).identity({("L", "R")})
+            return lazy.Root(
+                self.Tensor(["L", "R"],
+                            [self.D, self.D]).identity({("L", "R")}))
         else:
-            r = param[(l1, lp, "r")]
-            omega = param[(l1, lp, "omega")]
-            result = get_U(self.Tensor, self.D, r, omega, config)
-        return result
+            return lazy.Node(get_U, self.Tensor, self.D,
+                             self.parameter.param["r", l1, lp],
+                             self.parameter.param["omega", l1, lp], config)
 
-    def _clear_tensor(self, key):
+    def _modified_tensor(self, key):
         if len(key) == 3:
-            l1, lp, param = key
+            romega, l1, lp = key
             l1, l2 = self._mera_params[l1, lp]
-            self._real_clear_tensor(l1, l2)
+            return [(l1, l2)]
         if len(key) == 4:
             _, l2, ed, e6 = key
-            self._real_clear_tensor(self.L1 - 1, l2)
+            return [(self.L1 - 1, l2)]
+
+    def generate_initial_state(self, seed):
+        TAT.random.seed(seed)
+        uni1 = TAT.random.uniform_real(-1, +1)
+        uni2 = TAT.random.uniform_real(-2, +2)
+        unipi = TAT.random.uniform_real(-3.14, +3.14)
+
+        LP = 1
+        for l1 in range(self.L1 - 1):
+            if l1 % 2 == 0:
+                if l1 != 0:
+                    LP *= 2
+            else:
+                LP += 1
+            for lp in range(LP):
+                self.parameter["r", l1, lp] = uni2()
+                self.parameter["omega", l1, lp] = unipi()
+        for l2 in range(self.L2):
+            for ed in range(2):
+                for e6 in range(6):
+                    self.parameter["P", l2, ed, e6] = uni1()

@@ -1,36 +1,18 @@
 import pickle
 import TAT
+from han.systems.abstract_system import AbstractHoleSystem
 from han.systems.mera_eom_with_x6_post import Mera_EOM_with_x6_post
 from han.systems.heisenberg import Heisenberg
 
 
-class Mera_Heisenberg(Heisenberg, Mera_EOM_with_x6_post):
+class Mera_Heisenberg(Heisenberg, Mera_EOM_with_x6_post, AbstractHoleSystem):
     pass
 
 
 def create(file_name, layer, D, Dc, seed):
     lattice = Mera_Heisenberg(layer=layer, D=D, Dc=Dc, Tensor=TAT.No.D.Tensor)
 
-    TAT.random.seed(seed)
-    uni1 = TAT.random.uniform_real(-1, +1)
-    uni2 = TAT.random.uniform_real(-2, +2)
-    unipi = TAT.random.uniform_real(-3.14, +3.14)
-
-    LP = 1
-    for l1 in range(lattice.L1):
-        if l1 % 2 == 0:
-            if l1 != 0:
-                LP *= 2
-        else:
-            LP += 1
-        for lp in range(LP):
-            lattice.parameter[l1, lp, "r"] = uni2()
-            lattice.parameter[l1, lp, "omega"] = unipi()
-    for l2 in range(lattice.L2):
-        for ed in range(2):
-            for e6 in range(6):
-                lattice.parameter["P", l2, ed, e6] = uni1()
-
+    lattice.generate_initial_state(seed)
     with open(file_name, "wb") as file:
         pickle.dump(lattice, file)
 
@@ -39,12 +21,11 @@ def update(file_name, count, step):
     with open(file_name, "rb") as file:
         lattice = pickle.load(file)
     for t in range(count):
-        lattice.refresh_auxiliaries()
         a, b = lattice._energies()
         print(t, a / b / lattice.L2)
         with open(file_name.replace(".dat", "") + ".log", "a") as file:
             print(t, a / b / lattice.L2, file=file)
-        gp = lattice._grad_of_param()
+        gp = lattice.grad_of_param()
         for k in gp:
             g = gp[k]
             if k[2] == "r":
@@ -54,7 +35,6 @@ def update(file_name, count, step):
                     g = 0
             lattice.parameter[k] -= float(step) * g
         with open(file_name, "wb") as file:
-            lattice.auxiliaries = None
             pickle.dump(lattice, file)
 
 
