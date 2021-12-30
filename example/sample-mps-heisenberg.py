@@ -42,7 +42,9 @@ def update(file_name, count, step, sampling, seed):
     gen01 = TAT.random.uniform_real(0, 1)
     for t in range(count):
         ss = lattice.get_configurations(gen01, sampling)
-        e, branchs = lattice.energy(ss)
+        e, den, branchs = lattice.energy(ss)
+        print(e, den)
+        exit()
         gp = lattice.grad_of_param(ss, e, branchs)
         gp["e"] = e
 

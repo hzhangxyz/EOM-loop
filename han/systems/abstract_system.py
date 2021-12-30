@@ -216,22 +216,26 @@ class AbstractSamplingSystem(AbstractSystem):
         return possibility, conf, aux1, aux2
 
     def get_configurations(self, gen01, length):
-        data = [self.get_configuration(gen01) for _ in range(length)]
-        confs = [[s() for s in c] for _, c, _, _ in data]
+        data = [(self.get_configuration(gen01), self.get_configuration(gen01))
+                for _ in range(length)]
+        confs = [[*(s()
+                    for s in c1), *(s()
+                                    for s in c2)]
+                 for [_, c1, _, _], [_, c2, _, _] in data]
 
         conf_uniq, conf_index, conf_count = np.unique(confs,
                                                       return_index=True,
                                                       return_counts=True,
                                                       axis=0)
-        # poss, conf, aux1, aux2, count
-        return [(data[i][0], data[i][1], data[i][2], data[i][3], c)
-                for i, c in zip(conf_index, conf_count)]
+        # ((poss, conf, aux1, aux2), (poss, conf, aux1, aux2)), count
+        return [(data[i], c) for i, c in zip(conf_index, conf_count)]
 
     def _get_branchs(self, data):
         pool = {}
-        return [[
-            self._construct_branch(s1, s2, pool) for _, s2, _, _, _ in data
-        ] for _, s1, _, _, _ in data]
+        return [
+            self._construct_branch(s1, s2, pool)
+            for [[_, s1, _, _], [_, s2, _, _]], _ in data
+        ]
 
     def energy(self, data, branchs=None, changed=None):
         change_classical = change_quantum = False
@@ -247,30 +251,34 @@ class AbstractSamplingSystem(AbstractSystem):
         num = 0.
         den = 0.
 
-        total_count = sum(count for p, conf, aux1, aux2, count in data)
-
         # the possibility it should be
         wss = []
-        for p, conf, aux1, aux2, count in data:
+        for [[_, _, a_aux1, _], [_, _, b_aux1, _]], count in data:
             replacement = {}
             if change_quantum:
-                replacement[l1, l2] = cp(aux1._lattice[l1][l2])()
-            result = aux1.replace(replacement)
-            wss.append(abs(float(result)))
+                replacement[l1, l2] = cp(a_aux1._lattice[l1][l2])()
+            a_result = a_aux1.replace(replacement)
+            replacement = {}
+            if change_quantum:
+                replacement[l1, l2] = cp(b_aux1._lattice[l1][l2])()
+            b_result = b_aux1.replace(replacement)
+            wss.append(float(a_result) * float(b_result))
         # This abs is the reason to use sampling
 
         cls_change = None
         if change_classical:
             cls_change = cp, l2
-        for i1, [[p1, s1, _, _, n1], q1] in enumerate(zip(data, wss)):
-            for i2, [[p2, s2, _, _, n2], q2] in enumerate(zip(data, wss)):
-                branch = branchs[i1][i2]
-                e, d = self.energy_ss(branch, cls_change)
-                p = (n1 * n2) * (q1 * q2) / (p1 * p2)
-                dp = d * p
-                num += e * dp
-                den += dp
-        return num / den, branchs
+        for i, [[[[p1, s1, _, _], [p2, s2, _, _]], n],
+                q] in enumerate(zip(data, wss)):
+            branch = branchs[i]
+            e, d = self.energy_ss(branch, cls_change)
+            if np.isnan(e):
+                e = 0.
+            p = n * q / (p1 * p2)
+            dp = d * p
+            num += e * dp
+            den += dp
+        return num / den, den, branchs
 
     # It is complex to compute grad of tensor here, so calculate grad of param directly
 
