@@ -17,9 +17,12 @@
 #
 
 import numpy as np
+from mpi4py import MPI
 import TAT
 import lazy
 from tetragono.auxiliaries import Auxiliaries
+
+mpi_comm = MPI.COMM_WORLD
 
 
 class Param:
@@ -256,7 +259,7 @@ class AbstractSamplingSystem(AbstractSystem):
             if change_quantum:
                 replacement[l1, l2] = cp(aux1._lattice[l1][l2])()
             result = aux1.replace(replacement)
-            wss.append(abs(float(result)))
+            wss.append(float(result))
         # This abs is the reason to use sampling
 
         cls_change = None
@@ -266,10 +269,26 @@ class AbstractSamplingSystem(AbstractSystem):
             for i2, [[p2, s2, _, _, n2], q2] in enumerate(zip(data, wss)):
                 branch = branchs[i1][i2]
                 e, d = self.energy_ss(branch, cls_change)
+                if e == 0:
+                    continue
                 p = (n1 * n2) * (q1 * q2) / (p1 * p2)
                 dp = d * p
                 num += e * dp
                 den += dp
+        for i1, [[p1, s1, _, _, n1], q1] in enumerate(zip(data, wss)):
+            branch = branchs[i1][i1]
+            e, d = self.energy_ss(branch, cls_change)
+            if e == 0:
+                continue
+            p = (n1) * (q1 * q1) / (p1 * p1)
+            dp = d * p
+            num -= e * dp
+            den -= dp
+        num /= total_count * (total_count - 1)
+        den /= total_count * (total_count - 1)
+        num = mpi_comm.allreduce(num)
+        den = mpi_comm.allreduce(den)
+        # print([num, den, num / den])
         return num / den, branchs
 
     # It is complex to compute grad of tensor here, so calculate grad of param directly
