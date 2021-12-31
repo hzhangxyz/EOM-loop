@@ -24,6 +24,8 @@ from tetragono.auxiliaries import Auxiliaries
 
 mpi_comm = MPI.COMM_WORLD
 
+r_bound = 0.5
+
 
 class Param:
 

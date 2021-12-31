@@ -19,7 +19,7 @@
 import TAT
 import lazy
 from ..utility.storage_function import StorageFunction
-from .abstract_system import AbstractSystem
+from .abstract_system import AbstractSystem, r_bound
 from ..utility.tensor_U import tensor_U
 
 
@@ -233,7 +233,7 @@ class Mera_EOM_with_x6_post(AbstractSystem):
     def generate_initial_state(self, seed):
         TAT.random.seed(seed)
         uni1 = TAT.random.uniform_real(-1, +1)
-        uni2 = TAT.random.uniform_real(-2, +2)
+        unir = TAT.random.uniform_real(-r_bound, +r_bound)
         unipi = TAT.random.uniform_real(-3.14, +3.14)
 
         LP = 1
@@ -244,9 +244,35 @@ class Mera_EOM_with_x6_post(AbstractSystem):
             else:
                 LP += 1
             for lp in range(LP):
-                self.parameter["r", l1, lp] = uni2()
+                self.parameter["r", l1, lp] = unir()
                 self.parameter["omega", l1, lp] = unipi()
         for l2 in range(self.L2):
             for ed in range(2):
                 for e6 in range(6):
                     self.parameter["P", l2, ed, e6] = uni1()
+
+    def refine_parameters(self):
+        LP = 1
+        for l1 in range(self.L1 - 1):
+            if l1 % 2 == 0:
+                if l1 != 0:
+                    LP *= 2
+            else:
+                LP += 1
+            for lp in range(LP):
+                if self.parameter["r", l1, lp] > +r_bound:
+                    self.parameter["r", l1, lp] = +r_bound
+                if self.parameter["r", l1, lp] < -r_bound:
+                    self.parameter["r", l1, lp] = -r_bound
+        max_P = 0
+        for l2 in range(self.L2):
+            for ed in range(2):
+                for e6 in range(6):
+                    value = abs(self.parameter["P", l2, ed, e6])
+                    if value > max_P:
+                        max_P = value
+        for l2 in range(self.L2):
+            for ed in range(2):
+                for e6 in range(6):
+                    self.parameter["P", l2, ed,
+                                   e6] = self.parameter["P", l2, ed, e6] / max_P

@@ -1,7 +1,7 @@
 import pickle
 from mpi4py import MPI
 import TAT
-from han.systems.abstract_system import AbstractSamplingSystem
+from han.systems.abstract_system import AbstractSamplingSystem, r_bound
 from han.systems.mera_eom_with_x6_post import Mera_EOM_with_x6_post
 from han.systems.heisenberg import Heisenberg
 
@@ -20,6 +20,13 @@ def create(file_name, layer, D, Dc, seed):
         pickle.dump(lattice, file)
 
 
+def show(file_name):
+    with open(file_name, "rb") as file:
+        lattice = pickle.load(file)
+    for k, v in lattice.parameter.param.items():
+        print(k, v())
+
+
 def update(file_name, count, step, sampling, seed):
     with open(file_name, "rb") as file:
         lattice = pickle.load(file)
@@ -31,13 +38,8 @@ def update(file_name, count, step, sampling, seed):
         gp = lattice.grad_of_param(ss, e, branchs)
 
         for k in gp:
-            g = gp[k]
-            if k[2] == "r":
-                if lattice.parameter[k] >= +2 and g < 0:
-                    g = 0
-                if lattice.parameter[k] <= -2 and g > 0:
-                    g = 0
-            lattice.parameter[k] -= float(step) * g
+            lattice.parameter[k] -= float(step) * gp[k]
+        lattice.refine_parameters()
         if rank == 0:
             print(t, e / lattice.L2)
             with open(file_name.replace(".dat", "") + ".log", "a") as file:

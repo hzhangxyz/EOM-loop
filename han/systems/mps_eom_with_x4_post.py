@@ -19,7 +19,7 @@
 import TAT
 import lazy
 from ..utility.storage_function import StorageFunction
-from .abstract_system import AbstractSystem
+from .abstract_system import AbstractSystem, r_bound
 from ..utility.tensor_U import tensor_U
 
 
@@ -114,14 +114,34 @@ class MPS_EOM_with_x4_post(AbstractSystem):
     def generate_initial_state(self, seed):
         TAT.random.seed(seed)
         uni1 = TAT.random.uniform_real(-1, +1)
-        uni2 = TAT.random.uniform_real(-2, +2)
+        unir = TAT.random.uniform_real(-r_bound, +r_bound)
         unipi = TAT.random.uniform_real(-3.14, +3.14)
 
         for l1 in range(self.L1 - 1):
             for l2 in range(self.L2):
-                self.parameter["r", l1, l2] = uni2()
+                self.parameter["r", l1, l2] = unir()
                 self.parameter["omega", l1, l2] = unipi()
         for l2 in range(self.L2):
             for ed in range(2):
                 for e4 in range(4):
                     self.parameter["P", l2, ed, e4] = uni1()
+
+    def refine_parameters(self):
+        for l1 in range(self.L1 - 1):
+            for l2 in range(self.L2):
+                if self.parameter["r", l1, l2] > +r_bound:
+                    self.parameter["r", l1, l2] = +r_bound
+                if self.parameter["r", l1, l2] < -r_bound:
+                    self.parameter["r", l1, l2] = -r_bound
+        max_P = 0
+        for l2 in range(self.L2):
+            for ed in range(2):
+                for e4 in range(4):
+                    value = abs(self.parameter["P", l2, ed, e4])
+                    if value > max_P:
+                        max_P = value
+        for l2 in range(self.L2):
+            for ed in range(2):
+                for e4 in range(4):
+                    self.parameter["P", l2, ed,
+                                   e4] = self.parameter["P", l2, ed, e4] / max_P

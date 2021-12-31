@@ -1,6 +1,6 @@
 import pickle
 import TAT
-from han.systems.abstract_system import AbstractHoleSystem
+from han.systems.abstract_system import AbstractHoleSystem, r_bound
 from han.systems.mera_eom_with_x6_post import Mera_EOM_with_x6_post
 from han.systems.heisenberg import Heisenberg
 
@@ -17,6 +17,13 @@ def create(file_name, layer, D, Dc, seed):
         pickle.dump(lattice, file)
 
 
+def show(file_name):
+    with open(file_name, "rb") as file:
+        lattice = pickle.load(file)
+    for k, v in lattice.parameter.param.items():
+        print(k, v())
+
+
 def update(file_name, count, step):
     with open(file_name, "rb") as file:
         lattice = pickle.load(file)
@@ -27,13 +34,8 @@ def update(file_name, count, step):
             print(t, a / b / lattice.L2, file=file)
         gp = lattice.grad_of_param()
         for k in gp:
-            g = gp[k]
-            if k[2] == "r":
-                if lattice.parameter[k] >= +2 and g < 0:
-                    g = 0
-                if lattice.parameter[k] <= -2 and g > 0:
-                    g = 0
-            lattice.parameter[k] -= float(step) * g
+            lattice.parameter[k] -= float(step) * gp[k]
+        lattice.refine_parameters()
         with open(file_name, "wb") as file:
             pickle.dump(lattice, file)
 
