@@ -16,6 +16,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
+import numpy as np
 import TAT
 import lazy
 from ..utility.storage_function import StorageFunction
@@ -58,9 +59,9 @@ class MPS_EOM_with_x4_post(AbstractSystem):
             for l2 in range(self.L2):
                 self.parameter.add(("r", l1, l2))
                 self.parameter.add(("omega", l1, l2))
-        for l2 in range(self.L2):
-            for ed in range(2):
-                for e4 in range(4):
+        for l2 in range(0, self.L2, 2):
+            for ed in range(self.d**2):
+                for e4 in range(self.d**2):
                     self.parameter.add(("P", l2, ed, e4))
 
     def _construct_tensors(self):
@@ -69,13 +70,33 @@ class MPS_EOM_with_x4_post(AbstractSystem):
                 self._construct_tensor(l1, l2)
 
     def _construct_projector_tensor(self, l2, *args):
-        projector = self.Tensor(["D", "U"], [self.d, self.D]).zero()
-        i = 0
-        for ed in range(self.d):
-            for e4 in range(4):
-                projector[{"D": ed, "U": e4}] = args[i]
-                i += 1
-        return projector
+        p = self.Tensor(["D", "U"], [self.d, self.D]).zero()
+        for i in range(self.d):
+            p[{"D": i, "U": i}] = 1
+
+        npa = np.array(args).reshape(self.d**2, self.d**2)
+        q, r = np.linalg.qr(npa)
+        d = np.diag(np.sign(r.diagonal()))
+        projector = self.Tensor(["D", "U"], [self.d**2, self.d**2]).zero()
+        projector.blocks[projector.names] = q @ d
+        projector = projector.split_edge({
+            "D": [("D", self.d), ("D'", self.d)],
+            "U": [("U", self.d), ("U'", self.d)]
+        }).merge_edge({"R": ["D'", "U'"]})
+        return projector.contract(p, {("U", "D")})
+
+    def _construct_id(self):
+        p = self.Tensor(["D", "U"], [self.d, self.D]).zero()
+        for i in range(self.d):
+            p[{"D": i, "U": i}] = 1
+
+        projector = self.Tensor(["D", "U"],
+                                [self.d**2, self.d**2]).identity({("D", "U")})
+        projector = projector.split_edge({
+            "D": [("D", self.d), ("D'", self.d)],
+            "U": [("U", self.d), ("U'", self.d)]
+        }).merge_edge({"L": ["D'", "U'"]})
+        return projector.contract(p, {("U", "D")})
 
     def _construct_normal_tensor(self, l1, l2, r, omega):
         shrink = set()
@@ -90,13 +111,16 @@ class MPS_EOM_with_x4_post(AbstractSystem):
 
     def _construct_tensor(self, l1, l2):
         if l1 == self.L1 - 1:
-            args = [
-                self.parameter.param["P", l2, ed, e4]
-                for ed in range(self.d)
-                for e4 in range(4)
-            ]
-            self.tensor[l1][l2].replace(
-                lazy.Node(self._construct_projector_tensor, l2, *args))
+            if l2 % 2 == 0:
+                args = [
+                    self.parameter.param["P", l2, ed, e4]
+                    for ed in range(self.d**2)
+                    for e4 in range(self.d**2)
+                ]
+                self.tensor[l1][l2].replace(
+                    lazy.Node(self._construct_projector_tensor, l2, *args))
+            else:
+                self.tensor[l1][l2].replace(lazy.Node(self._construct_id))
         else:
             self.tensor[l1][l2].replace(
                 lazy.Node(self._construct_normal_tensor, l1, l2,
@@ -121,9 +145,9 @@ class MPS_EOM_with_x4_post(AbstractSystem):
             for l2 in range(self.L2):
                 self.parameter["r", l1, l2] = unir()
                 self.parameter["omega", l1, l2] = unipi()
-        for l2 in range(self.L2):
-            for ed in range(2):
-                for e4 in range(4):
+        for l2 in range(0, self.L2, 2):
+            for ed in range(self.d**2):
+                for e4 in range(self.d**2):
                     self.parameter["P", l2, ed, e4] = uni1()
 
     def refine_parameters(self):
@@ -134,14 +158,14 @@ class MPS_EOM_with_x4_post(AbstractSystem):
                 if self.parameter["r", l1, l2] < -r_bound:
                     self.parameter["r", l1, l2] = -r_bound
         max_P = 0
-        for l2 in range(self.L2):
-            for ed in range(2):
-                for e4 in range(4):
+        for l2 in range(0, self.L2, 2):
+            for ed in range(self.d**2):
+                for e4 in range(self.d**2):
                     value = abs(self.parameter["P", l2, ed, e4])
                     if value > max_P:
                         max_P = value
-        for l2 in range(self.L2):
-            for ed in range(2):
-                for e4 in range(4):
+        for l2 in range(0, self.L2, 2):
+            for ed in range(self.d**2):
+                for e4 in range(self.d**2):
                     self.parameter["P", l2, ed,
                                    e4] = self.parameter["P", l2, ed, e4] / max_P
