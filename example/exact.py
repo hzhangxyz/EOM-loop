@@ -31,16 +31,22 @@ H[1, 1, 1, 1] = 1 / 4.
 H[1, 0, 0, 1] = 2 / 4.
 H[0, 1, 1, 0] = 2 / 4.
 
+
+def qr(c):
+    q, r = torch.linalg.qr(c, mode="complete")
+    d = torch.diag_embed(torch.diag(r).sign())
+    return q @ d
+
+
 # while True:
 for _ in range(10000):
     quan = [get_U(*i) for i in parameter]
 
     psiq = torch.einsum("abcd,befg,ehij,hklm,a,c,f,i,l,k->dgjm", quan[0],
                         quan[1], quan[2], quan[3], p40, p40, p40, p40, p40, p40)
+    # psiq = torch.abs(psiq)
 
-    clas_q = [
-        torch.linalg.qr(c, mode="reduced")[0].reshape([4, 2, 2]) for c in clas
-    ]
+    clas_q = [qr(c).reshape([4, 2, 2]) for c in clas]
     psi = torch.einsum("abcd,aex,bfy,cgz,dhw->exfygzhw", psiq, clas_q[0],
                        clas_q[1], clas_q[2], clas_q[3])
 
@@ -60,20 +66,20 @@ for _ in range(10000):
     energy.backward()
 
     with torch.no_grad():
-        delta = 1e-5
+        delta = 1e-12
         step_size = 0.001
         for i in range(4):
             clas[i] = torch.tensor(
                 clas[i] -
-                step_size * np.sign(clas[i].grad) * np.random.rand(4, 4),
+                step_size * torch.sign(clas[i].grad) * np.random.rand(4, 4),
                 requires_grad=True)
 
             modified = get_U(parameter[i, 0] + delta, parameter[i, 1])
             tensor_diff = (modified - quan[i]) / delta
             param_grad = torch.sum(tensor_diff * quan[i].grad,
                                    axis=[0, 1, 2, 3])
-            parameter[i,
-                      0] -= step_size * np.sign(param_grad) * np.random.rand()
+            parameter[
+                i, 0] -= step_size * torch.sign(param_grad) * np.random.rand()
             if parameter[i, 0] > +1:
                 parameter[i, 0] = +1
             if parameter[i, 0] < -1:
