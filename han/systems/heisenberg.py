@@ -20,12 +20,13 @@ from .abstract_system import AbstractSystem
 class Heisenberg(AbstractSystem):
 
     def __init__(self, *args, **kwargs):
-        self.d = 2
+        self.d = 4
         super(Heisenberg, self).__init__(*args, **kwargs)
         self._set_hamiltonian()
 
     def _set_hamiltonian(self):
-        H = self.Tensor(["I0", "I1", "O0", "O1"], [2, 2, 2, 2]).zero()
+        H = self.Tensor(["I0", "I1", "O0", "O1"],
+                        [self.d, self.d, self.d, self.d]).zero()
         block = H.blocks[H.names]
         block[0, 0, 0, 0] = 1 / 4.
         block[0, 1, 0, 1] = -1 / 4.
