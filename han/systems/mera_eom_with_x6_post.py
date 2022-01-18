@@ -191,7 +191,7 @@ class Mera_EOM_with_x6_post(AbstractSystem):
     def _construct_projector_tensor(self, l2, *args):
         p = self.Tensor(["D", "U"], [self.d, self.D]).zero()
         for i in range(self.d):
-            p[{"D": i, "U": i}] = 1
+            p[{"D": i, "U": i + 1}] = 1
 
         if l2 == self.L2 - 1:
             tu = None
