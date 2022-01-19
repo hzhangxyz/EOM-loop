@@ -57,11 +57,13 @@ class MPS_EOM_with_x4_post(AbstractSystem):
     def _construct_params(self):
         for l1 in range(self.L1 - 1):
             for l2 in range(self.L2):
-                self.parameter.add(("r", l1, l2))
-                self.parameter.add(("omega", l1, l2))
+                self.parameter.add(("r1", l1, l2))
+                self.parameter.add(("omega1", l1, l2))
+                self.parameter.add(("r2", l1, l2))
+                self.parameter.add(("omega2", l1, l2))
         for l2 in range(self.L2):
-            for ed in range(self.D):
-                for e4 in range(self.D):
+            for ed in range(self.d**2):
+                for e4 in range(self.d**2):
                     self.parameter.add(("P", l2, ed, e4))
 
     def _construct_tensors(self):
@@ -70,19 +72,25 @@ class MPS_EOM_with_x4_post(AbstractSystem):
                 self._construct_tensor(l1, l2)
 
     def _construct_projector_tensor(self, l2, *args):
-        p = self.Tensor(["D", "U"], [self.d, self.D]).zero()
+        p1 = self.Tensor(["D", "U"], [self.d**2, self.D**2]).zero()
         for i in range(self.d):
-            p[{"D": i, "U": i}] = 1
+            for j in range(self.d):
+                index = i * self.d + j
+                p1[{"D": index, "U": index}] = 1
 
-        npa = np.array(args).reshape(self.D, self.D)
+        npa = np.array(args).reshape(self.d**2, self.d**2)
         q, r = np.linalg.qr(npa)
         d = np.diag(np.sign(r.diagonal()))
-        projector = self.Tensor(["D", "U"], [self.D, self.D]).zero()
+        projector = self.Tensor(["D", "U"], [self.d**2, self.d**2]).zero()
         projector.blocks[projector.names] = q @ d
 
-        return projector.contract(p, {("D", "U")})
+        p2 = self.Tensor(["D", "U"], [self.d, self.d**2]).zero()
+        for i in range(self.d):
+            p2[{"D": i, "U": i}] = 1
 
-    def _construct_normal_tensor(self, l1, l2, r, omega):
+        return p1.contract(projector, {("D", "U")}).contract(p2, {("D", "U")})
+
+    def _construct_normal_tensor(self, l1, l2, r1, omega1, r2, omega2):
         shrink = set()
         if l1 == 0:
             shrink.add("U")
@@ -90,23 +98,36 @@ class MPS_EOM_with_x4_post(AbstractSystem):
             shrink.add("L")
         if l2 == self.L2 - 1:
             shrink.add("R")
-        result = get_U(self.Tensor, self.D, r, omega, tuple(shrink))
-        return result
+        result1 = get_U(self.Tensor, self.D, r1, omega1)
+        result2 = get_U(self.Tensor, self.D, r2, omega2)
+        result = result1.edge_rename({
+            "D": "D1",
+            "U": "U1"
+        }).contract(result2.edge_rename({
+            "D": "D2",
+            "U": "U2"
+        }), {("R", "L")}).merge_edge({
+            "U": ["U1", "U2"],
+            "D": ["D1", "D2"]
+        })
+        return result.shrink({i: 0 for i in shrink})
 
     def _construct_tensor(self, l1, l2):
         if l1 == self.L1 - 1:
             args = [
                 self.parameter.param["P", l2, ed, e4]
-                for ed in range(self.D)
-                for e4 in range(self.D)
+                for ed in range(self.d**2)
+                for e4 in range(self.d**2)
             ]
             self.tensor[l1][l2].replace(
                 lazy.Node(self._construct_projector_tensor, l2, *args))
         else:
             self.tensor[l1][l2].replace(
                 lazy.Node(self._construct_normal_tensor, l1, l2,
-                          self.parameter.param["r", l1, l2],
-                          self.parameter.param["omega", l1, l2]))
+                          self.parameter.param["r1", l1, l2],
+                          self.parameter.param["omega1", l1, l2],
+                          self.parameter.param["r2", l1, l2],
+                          self.parameter.param["omega2", l1, l2]))
 
     def _modified_tensor(self, key):
         if len(key) == 3:
@@ -124,29 +145,35 @@ class MPS_EOM_with_x4_post(AbstractSystem):
 
         for l1 in range(self.L1 - 1):
             for l2 in range(self.L2):
-                self.parameter["r", l1, l2] = unir()
-                self.parameter["omega", l1, l2] = unipi()
+                self.parameter["r1", l1, l2] = unir()
+                self.parameter["omega1", l1, l2] = unipi()
+                self.parameter["r2", l1, l2] = unir()
+                self.parameter["omega2", l1, l2] = unipi()
         for l2 in range(self.L2):
-            for ed in range(self.D):
-                for e4 in range(self.D):
+            for ed in range(self.d**2):
+                for e4 in range(self.d**2):
                     self.parameter["P", l2, ed, e4] = uni1()
 
     def refine_parameters(self):
         for l1 in range(self.L1 - 1):
             for l2 in range(self.L2):
-                if self.parameter["r", l1, l2] > +r_bound:
-                    self.parameter["r", l1, l2] = +r_bound
-                if self.parameter["r", l1, l2] < -r_bound:
-                    self.parameter["r", l1, l2] = -r_bound
+                if self.parameter["r1", l1, l2] > +r_bound:
+                    self.parameter["r1", l1, l2] = +r_bound
+                if self.parameter["r1", l1, l2] < -r_bound:
+                    self.parameter["r1", l1, l2] = -r_bound
+                if self.parameter["r2", l1, l2] > +r_bound:
+                    self.parameter["r2", l1, l2] = +r_bound
+                if self.parameter["r2", l1, l2] < -r_bound:
+                    self.parameter["r2", l1, l2] = -r_bound
         max_P = 0
         for l2 in range(self.L2):
-            for ed in range(self.D):
-                for e4 in range(self.D):
+            for ed in range(self.d**2):
+                for e4 in range(self.d**2):
                     value = abs(self.parameter["P", l2, ed, e4])
                     if value > max_P:
                         max_P = value
         for l2 in range(self.L2):
-            for ed in range(self.D):
-                for e4 in range(self.D):
+            for ed in range(self.d**2):
+                for e4 in range(self.d**2):
                     self.parameter["P", l2, ed,
                                    e4] = self.parameter["P", l2, ed, e4] / max_P
