@@ -75,8 +75,7 @@ class MPS_EOM_with_x4_post(AbstractSystem):
         p1 = self.Tensor(["D", "U"], [self.d**2, self.D**2]).zero()
         for i in range(self.d):
             for j in range(self.d):
-                index = i * self.d + j
-                p1[{"D": index, "U": index}] = 1
+                p1[{"D": i * self.d + j, "U": i * self.D + j}] = 1
 
         npa = np.array(args).reshape(self.d**2, self.d**2)
         q, r = np.linalg.qr(npa)
