@@ -32,12 +32,12 @@ class Ising(AbstractSystem):
         block[0, 1, 0, 1] = -1
         block[1, 0, 1, 0] = -1
         block[1, 1, 1, 1] = 1
-        for i in range(self.L2 - 1):
-            self.hamiltonians[(i, i + 1)] = sigmazsigmaz
+        for i in range(0, self.L2 - 2, 2):
+            self.hamiltonians[(i, i + 2)] = sigmazsigmaz
 
         sigmax = self.Tensor(["I0", "O0"], [2, 2]).zero()
         block = sigmax.blocks[sigmax.names]
         block[1, 0] = 1
         block[0, 1] = 1
-        for i in range(self.L2):
+        for i in range(0, self.L2, 2):
             self.hamiltonians[(i,)] = sigmax
