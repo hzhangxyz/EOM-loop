@@ -125,8 +125,8 @@ class Mera_EOM_with_x6_post(AbstractSystem):
                 self.parameter.add(("r", l1, lp))
                 self.parameter.add(("omega", l1, lp))
         for l2 in range(self.L2):
-            for ed in range(self.D):
-                for e6 in range(self.D):
+            for ed in range(self.d**2):
+                for e6 in range(self.d**2):
                     self.parameter.add(("P", l2, ed, e6))
 
     def _construct_tensors(self):
@@ -189,23 +189,41 @@ class Mera_EOM_with_x6_post(AbstractSystem):
                 interval *= 2
 
     def _construct_projector_tensor(self, l2, *args):
-        p = self.Tensor(["D", "U"], [self.d, self.D]).zero()
+        p1 = self.Tensor(["D", "U"], [self.d, self.D]).zero()
         for i in range(self.d):
-            p[{"D": i, "U": i}] = 1
+            p1[{"D": i, "U": i}] = 1
 
-        npa = np.array(args).reshape(self.D, self.D)
-        q, r = np.linalg.qr(npa)
-        d = np.diag(np.sign(r.diagonal()))
-        projector = self.Tensor(["D", "U"], [self.D, self.D]).zero()
-        projector.blocks[projector.names] = q @ d
-        return projector.contract(p, {("D", "U")})
+        p2 = self.Tensor(["D", "U"], [self.d, self.d**2]).zero()
+        for i in range(self.d):
+            p2[{"D": i, "U": i}] = 1
+
+        if l2 % 2 == 0:
+            npa = np.array(args).reshape(self.d**2, self.d**2)
+            q, r = np.linalg.qr(npa)
+            d = np.diag(np.sign(r.diagonal()))
+            projector = self.Tensor(["D", "U"], [self.d**2, self.d**2]).zero()
+            projector.blocks[projector.names] = q @ d
+            projector = projector.split_edge(
+                {"U": [("U", self.d), ("R", self.d)]})
+
+            result = p1.contract(projector,
+                                 {("D", "U")}).contract(p2, {("D", "U")})
+            return result
+        else:
+            identity = self.Tensor(["L", "U"],
+                                   [self.d, self.d]).identity({("L", "U")})
+            fake = self.Tensor(["D"], [self.d]).zero()
+            fake.storage[0] = 1
+            result = p1.contract(identity,
+                                 {("D", "U")}).contract(fake, {("D", "U")})
+            return result
 
     def _construct_tensor(self, l1, l2):
         if l1 == self.L1 - 1:
             args = [
                 self.parameter.param["P", l2, ed, e6]
-                for ed in range(self.D)
-                for e6 in range(self.D)
+                for ed in range(self.d**2)
+                for e6 in range(self.d**2)
             ]
             return lazy.Node(self._construct_projector_tensor, l2, *args)
         l1l2 = l1, l2
@@ -251,8 +269,8 @@ class Mera_EOM_with_x6_post(AbstractSystem):
                 self.parameter["r", l1, lp] = unir()
                 self.parameter["omega", l1, lp] = unipi()
         for l2 in range(self.L2):
-            for ed in range(self.D):
-                for e6 in range(self.D):
+            for ed in range(self.d**2):
+                for e6 in range(self.d**2):
                     self.parameter["P", l2, ed, e6] = uni1()
 
     def refine_parameters(self):
@@ -270,13 +288,13 @@ class Mera_EOM_with_x6_post(AbstractSystem):
                     self.parameter["r", l1, lp] = -r_bound
         max_P = 0
         for l2 in range(self.L2):
-            for ed in range(self.D):
-                for e6 in range(self.D):
+            for ed in range(self.d**2):
+                for e6 in range(self.d**2):
                     value = abs(self.parameter["P", l2, ed, e6])
                     if value > max_P:
                         max_P = value
         for l2 in range(self.L2):
-            for ed in range(self.D):
-                for e6 in range(self.D):
+            for ed in range(self.d**2):
+                for e6 in range(self.d**2):
                     self.parameter["P", l2, ed,
                                    e6] = self.parameter["P", l2, ed, e6] / max_P

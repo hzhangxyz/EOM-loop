@@ -406,28 +406,59 @@ class AbstractHoleSystem(AbstractSystem):
                 raise NotImplementedError("3 body hamitlonian not implement")
             if len(position) == 2:
                 i, j = position
-                if i + 1 != j:
+                if i + 1 == j:
+                    self.auxiliaries[self.L1, i] = hamiltonian.edge_rename({
+                        "I0": "U",
+                        "O0": "D"
+                    }).merge_edge({"R": ["I1", "O1"]})
+                    d = self.d
+                    self.auxiliaries[self.L1, i + 1] = self.Tensor(
+                        ["U", "LU", "D", "LD"], [d, d, d, d]).identity({
+                            ("U", "LU"), ("D", "LD")
+                        }).merge_edge({"L": ["LU", "LD"]})
+
+                    this = self._collect_hole()
+
+                    d = self.d
+                    iden = self.Tensor(["U", "D"],
+                                       [d, d]).identity({("U", "D")})
+                    self.auxiliaries[self.L1, j] = iden
+                    d = self.d
+                    iden = self.Tensor(["U", "D"],
+                                       [d, d]).identity({("U", "D")})
+                    self.auxiliaries[self.L1, i] = iden
+                elif i + 2 == j:
+                    self.auxiliaries[self.L1, i] = hamiltonian.edge_rename({
+                        "I0": "U",
+                        "O0": "D"
+                    }).merge_edge({"R": ["I1", "O1"]})
+                    d = self.d
+                    self.auxiliaries[self.L1, i + 1] = self.Tensor(
+                        ["U", "L", "D", "R"],
+                        [d, d**2, d, d**2]).identity({("L", "R"), ("D", "U")})
+                    d = self.d
+                    self.auxiliaries[self.L1, i + 2] = self.Tensor(
+                        ["U", "LU", "D", "LD"], [d, d, d, d]).identity({
+                            ("U", "LU"), ("D", "LD")
+                        }).merge_edge({"L": ["LU", "LD"]})
+
+                    this = self._collect_hole()
+
+                    d = self.d
+                    iden = self.Tensor(["U", "D"],
+                                       [d, d]).identity({("U", "D")})
+                    self.auxiliaries[self.L1, i] = iden
+                    d = self.d
+                    iden = self.Tensor(["U", "D"],
+                                       [d, d]).identity({("U", "D")})
+                    self.auxiliaries[self.L1, i + 1] = iden
+                    d = self.d
+                    iden = self.Tensor(["U", "D"],
+                                       [d, d]).identity({("U", "D")})
+                    self.auxiliaries[self.L1, i + 2] = iden
+                else:
                     raise NotImplementedError(
                         "non nearest hamiltonian not implement")
-
-                self.auxiliaries[self.L1, i] = hamiltonian.edge_rename({
-                    "I0": "U",
-                    "O0": "D"
-                }).merge_edge({"R": ["I1", "O1"]})
-                d = self.d
-                self.auxiliaries[self.L1, i + 1] = self.Tensor(
-                    ["U", "LU", "D", "LD"], [d, d, d, d]).identity({
-                        ("U", "LU"), ("D", "LD")
-                    }).merge_edge({"L": ["LU", "LD"]})
-
-                this = self._collect_hole()
-
-                d = self.d
-                iden = self.Tensor(["U", "D"], [d, d]).identity({("U", "D")})
-                self.auxiliaries[self.L1, j] = iden
-                d = self.d
-                iden = self.Tensor(["U", "D"], [d, d]).identity({("U", "D")})
-                self.auxiliaries[self.L1, i] = iden
             if len(position) == 1:
                 i = position[0]
                 self.auxiliaries[self.L1, i] = hamiltonian.edge_rename({

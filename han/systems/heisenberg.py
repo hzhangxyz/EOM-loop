@@ -33,5 +33,5 @@ class Heisenberg(AbstractSystem):
         block[1, 1, 1, 1] = 1 / 4.
         block[1, 0, 0, 1] = 2 / 4.
         block[0, 1, 1, 0] = 2 / 4.
-        for i in range(self.L2 - 1):
-            self.hamiltonians[(i, i + 1)] = H
+        for i in range(0, self.L2 - 2, 2):
+            self.hamiltonians[(i, i + 2)] = H
