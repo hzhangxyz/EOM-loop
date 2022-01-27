@@ -17,6 +17,7 @@
 #
 
 import numpy as np
+import scipy.linalg
 import TAT
 import lazy
 from ..utility.storage_function import StorageFunction
@@ -198,11 +199,12 @@ class Mera_EOM_with_x6_post(AbstractSystem):
             p2[{"D": i, "U": i}] = 1
 
         if l2 % 2 == 0:
+            assert self.d == 2
             npa = np.array(args).reshape(self.d**2, self.d**2)
-            q, r = np.linalg.qr(npa)
-            d = np.diag(np.sign(r.diagonal()))
+            to_exp = npa - npa.T
+            u = scipy.linalg.expm(to_exp)
             projector = self.Tensor(["D", "U"], [self.d**2, self.d**2]).zero()
-            projector.blocks[projector.names] = q @ d
+            projector.blocks[projector.names] = u
             projector = projector.split_edge(
                 {"U": [("U", self.d), ("R", self.d)]})
 
@@ -271,7 +273,7 @@ class Mera_EOM_with_x6_post(AbstractSystem):
         for l2 in range(self.L2):
             for ed in range(self.d**2):
                 for e6 in range(self.d**2):
-                    self.parameter["P", l2, ed, e6] = uni1()
+                    self.parameter["P", l2, ed, e6] = unipi()
 
     def refine_parameters(self):
         LP = 1
@@ -286,15 +288,3 @@ class Mera_EOM_with_x6_post(AbstractSystem):
                     self.parameter["r", l1, lp] = +r_bound
                 if self.parameter["r", l1, lp] < -r_bound:
                     self.parameter["r", l1, lp] = -r_bound
-        max_P = 0
-        for l2 in range(self.L2):
-            for ed in range(self.d**2):
-                for e6 in range(self.d**2):
-                    value = abs(self.parameter["P", l2, ed, e6])
-                    if value > max_P:
-                        max_P = value
-        for l2 in range(self.L2):
-            for ed in range(self.d**2):
-                for e6 in range(self.d**2):
-                    self.parameter["P", l2, ed,
-                                   e6] = self.parameter["P", l2, ed, e6] / max_P
