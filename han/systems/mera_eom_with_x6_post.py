@@ -199,25 +199,12 @@ class Mera_EOM_with_x6_post(AbstractSystem):
             p2[{"D": i, "U": i}] = 1
 
         if l2 % 2 == 0:
-            assert self.d == 2
-            npa = np.array(args).reshape(self.d**2, self.d**2)
-            to_exp = npa - npa.T
-            u = scipy.linalg.expm(to_exp)
-            projector = self.Tensor(["D", "U"], [self.d**2, self.d**2]).zero()
-            projector.blocks[projector.names] = u
-            projector = projector.split_edge(
-                {"U": [("U", self.d), ("R", self.d)]})
-
-            result = p1.contract(projector,
-                                 {("D", "U")}).contract(p2, {("D", "U")})
-            return result
+            return p1
         else:
-            identity = self.Tensor(["L", "U"],
-                                   [self.d, self.d]).identity({("L", "U")})
             fake = self.Tensor(["D"], [self.d]).zero()
             fake.storage[0] = 1
-            result = p1.contract(identity,
-                                 {("D", "U")}).contract(fake, {("D", "U")})
+            result = p1.contract(fake.edge_rename({"D": "U"}),
+                                 {("D", "U")}).contract(fake, set())
             return result
 
     def _construct_tensor(self, l1, l2):
@@ -251,6 +238,7 @@ class Mera_EOM_with_x6_post(AbstractSystem):
             l1, l2 = self._mera_params[l1, lp]
             return [(l1, l2)]
         if len(key) == 4:
+            return []
             _, l2, ed, e6 = key
             return [(self.L1 - 1, l2)]
 
