@@ -1,0 +1,17 @@
+cmake_minimum_required(VERSION 3.10)
+project(EOM-loop)
+
+add_compile_options("$<$<CXX_COMPILER_ID:MSVC>:/utf-8>")
+
+find_package(pybind11 QUIET)
+if(pybind11_FOUND)
+   message("-- Enable python(system)")
+else()
+   add_subdirectory(pybind11)
+   message("-- Enable python(local)")
+endif()
+
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/../han2)
+pybind11_add_module(matrix_U matrix_U.cpp)
+target_link_libraries(matrix_U PRIVATE "-lblas")
+pybind11_add_module(matrix_A matrix_A.cpp)

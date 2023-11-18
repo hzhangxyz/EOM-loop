@@ -1,0 +1,7 @@
+build
+*.so
+pybind11
+__pycache__
+run
+rep
+.mypy_cache
