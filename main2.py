@@ -54,7 +54,10 @@ def main(D, r1, omega1, phi1, psi1, r2, omega2, phi2, psi2, k, eta, measure):
             result = result.contract(kraus_matrix, {("n1'", "I"), ("k", "k")}).edge_rename({"O": "n1'"})
             result = result.contract(kraus_matrix, {("n2", "I")}).edge_rename({"O": "n2"})
             result = result.contract(kraus_matrix, {("n2'", "I"), ("k", "k")}).edge_rename({"O": "n2'"})
-    return complex(result)
+    if result.norm_num() == 1:
+        return complex(result)
+    else:
+        return result
 
 
 def unit(i, d):
@@ -384,6 +387,92 @@ def ideal_count(L, D, r1, omega1, phi1, psi1, r2, omega2, phi2, psi2, k, eta, ma
     return (num / den).real, den.real
 
 
+def distribution(L, D, r1, omega1, phi1, psi1, r2, omega2, phi2, psi2, k, eta, d_out, pd, dc, masks):
+    if isinstance(masks, str):
+        if masks == "":
+            masks = []
+        else:
+            masks = [int(n) for n in masks.split(",")]
+    device = device_tensor(D, d_out, pd, dc)
+    last = None
+    former_d = 0
+    counters = []
+    for i in range(L):
+        if i in masks:
+            counters.append(None)
+        else:
+            if former_d == 0:
+                counters.append(Tensor(["t", "o"], [D, D]).identity({("t", "o")}))
+                former_d = D
+            else:
+                counters.append(sum_matrix(former_d, D).edge_rename({"I1": "i", "I2": "t", "O": "o"}))
+                former_d += D - 1
+            counters[-1] = counters[-1].contract(device, {("t", "O")}).edge_rename({"I": "t"})
+            last = i
+    result = main(
+        D=D,
+        #
+        r1=r1,
+        omega1=omega1,
+        phi1=phi1,
+        psi1=psi1,
+        #
+        r2=r2,
+        omega2=omega2,
+        phi2=phi2,
+        psi2=psi2,
+        #
+        k=k,
+        eta=eta,
+        #
+        measure=[(None, counters[i]) for i in range(L)],
+    ).blocks[["o"]].real
+    result = result / sum(result)
+    return "\n".join("%.6f" % i for i in result)
+
+
+def ideal_distribution(L, D, r1, omega1, phi1, psi1, r2, omega2, phi2, psi2, k, eta, masks):
+    if isinstance(masks, str):
+        if masks == "":
+            masks = []
+        else:
+            masks = [int(n) for n in masks.split(",")]
+    last = None
+    former_d = 0
+    counters = []
+    for i in range(L):
+        if i in masks:
+            counters.append(None)
+        else:
+            if former_d == 0:
+                counters.append(Tensor(["t", "o"], [D, D]).identity({("t", "o")}))
+                former_d = D
+            else:
+                counters.append(sum_matrix(former_d, D).edge_rename({"I1": "i", "I2": "t", "O": "o"}))
+                former_d += D - 1
+            last = i
+    result = main(
+        D=D,
+        #
+        r1=r1,
+        omega1=omega1,
+        phi1=phi1,
+        psi1=psi1,
+        #
+        r2=r2,
+        omega2=omega2,
+        phi2=phi2,
+        psi2=psi2,
+        #
+        k=k,
+        eta=eta,
+        #
+        measure=[(None, counters[i]) for i in range(L)],
+    ).blocks[["o"]].real
+    result = result / sum(result)
+    return "\n".join("%.6f" % i for i in result)
+
+
 import gradio as gr
 
 io0 = gr.Interface(
@@ -546,4 +635,62 @@ io5 = gr.Interface(
     allow_flagging="never",
     api_name="ideal_count",
 )
-gr.TabbedInterface([io0, io1, io2, io3, io4, io5], ["Possibility", "Ideal Possibility", "Parity", "Ideal Parity", "Count", "Ideal Count"], theme=gr.themes.Monochrome()).launch(server_port=2333,)
+io6 = gr.Interface(
+    fn=distribution,
+    inputs=[
+        gr.Slider(2, 100, 2, step=1),
+        gr.Slider(1, 100, 10, step=1),
+        #
+        gr.Slider(-math.pi * 2, +math.pi * 2, 2),
+        gr.Slider(-math.pi * 2, +math.pi * 2, 0),
+        gr.Slider(-math.pi * 2, +math.pi * 2, math.pi),
+        gr.Slider(-math.pi * 2, +math.pi * 2, 0),
+        #
+        gr.Slider(-math.pi * 2, +math.pi * 2, 0),
+        gr.Slider(-math.pi * 2, +math.pi * 2, math.pi / 2),
+        gr.Slider(-math.pi * 2, +math.pi * 2, 0),
+        gr.Slider(-math.pi * 2, +math.pi * 2, math.pi / 2),
+        #
+        gr.Slider(1, 100, 1, step=1),
+        gr.Slider(0, 1, 1),
+        #
+        gr.Slider(1, 100, 11, step=1),
+        gr.Slider(0, 1, 0.8),
+        gr.Slider(0, 1, 0.0),
+        #
+        gr.Textbox(""),
+    ],
+    outputs=[gr.Textbox(label="distribution")],
+    allow_flagging="never",
+    api_name="distribution",
+)
+io7 = gr.Interface(
+    fn=ideal_distribution,
+    inputs=[
+        gr.Slider(2, 100, 2, step=1),
+        gr.Slider(1, 100, 10, step=1),
+        #
+        gr.Slider(-math.pi * 2, +math.pi * 2, 2),
+        gr.Slider(-math.pi * 2, +math.pi * 2, 0),
+        gr.Slider(-math.pi * 2, +math.pi * 2, math.pi),
+        gr.Slider(-math.pi * 2, +math.pi * 2, 0),
+        #
+        gr.Slider(-math.pi * 2, +math.pi * 2, 0),
+        gr.Slider(-math.pi * 2, +math.pi * 2, math.pi / 2),
+        gr.Slider(-math.pi * 2, +math.pi * 2, 0),
+        gr.Slider(-math.pi * 2, +math.pi * 2, math.pi / 2),
+        #
+        gr.Slider(1, 100, 1, step=1),
+        gr.Slider(0, 1, 1),
+        #
+        gr.Textbox(""),
+    ],
+    outputs=[gr.Textbox(label="distribution")],
+    allow_flagging="never",
+    api_name="ideal_distribution",
+)
+gr.TabbedInterface(
+    [io0, io1, io2, io3, io4, io5, io6, io7],
+    ["Possibility", "Ideal Possibility", "Parity", "Ideal Parity", "Count", "Ideal Count", "Distribution", "Ideal Distribution"],
+    theme=gr.themes.Monochrome(),
+).launch(server_port=2333)
