@@ -24,9 +24,7 @@ def get_central(u2, m):
     return result
 
 
-def main(D, r1, omega1, phi1, psi1, r2, omega2, phi2, psi2, k, eta, measure):
-    u1 = tensor_U(D, D, r=r1, omega=omega1, phi=phi1, psi=psi1)
-    u1h = u1.shrink({"I2": 0})
+def main(D, r1, omega1, phi1, psi1, r2, omega2, phi2, psi2, k, eta, eta_pump, measure):
     u2 = tensor_U(D, D, r=r2, omega=omega2, phi=phi2, psi=psi2)
     L = len(measure)
     central = [get_central(u2, m) for m in measure]
@@ -34,6 +32,9 @@ def main(D, r1, omega1, phi1, psi1, r2, omega2, phi2, psi2, k, eta, measure):
     result = Tensor(["n1", "n2", "n1'", "n2'"], [D, D, D, D]).zero()
     result[{"n1": 0, "n2": 0, "n1'": 0, "n2'": 0}] = 1
     for i, c in enumerate(central):
+        u1 = tensor_U(D, D, r=r1, omega=omega1, phi=phi1, psi=psi1)
+        u1h = u1.shrink({"I2": 0})
+        r1 = r1 * eta_pump**(1 / 2)
         if i != L - 1:
             result = result.contract(u1h, {("n1", "I1")}).edge_rename({"O1": "n1", "O2": "c1"})
             result = result.contract(u1h, {("n2", "I1")}).edge_rename({"O1": "n2", "O2": "c2"})
@@ -74,7 +75,7 @@ def sum_matrix(d1, d2):
     return result
 
 
-def possibility(D, r1, omega1, phi1, psi1, r2, omega2, phi2, psi2, k, eta, d_out, pd, dc, ns):
+def possibility(D, r1, omega1, phi1, psi1, r2, omega2, phi2, psi2, k, eta, eta_pump, d_out, pd, dc, ns):
     if isinstance(ns, str):
         ns = [int(n) for n in ns.split(",")]
     device = device_tensor(D, d_out, pd, dc).edge_rename({"I": "t"})
@@ -93,6 +94,7 @@ def possibility(D, r1, omega1, phi1, psi1, r2, omega2, phi2, psi2, k, eta, d_out
         #
         k=k,
         eta=eta,
+        eta_pump=eta_pump,
         #
         measure=[(None, device.shrink({"O": n})) for n in ns],
     )
@@ -111,13 +113,14 @@ def possibility(D, r1, omega1, phi1, psi1, r2, omega2, phi2, psi2, k, eta, d_out
         #
         k=k,
         eta=eta,
+        eta_pump=eta_pump,
         #
         measure=[(None, None) for n in ns],
     )
     return (num / den).real, den.real
 
 
-def ideal_possibility(D, r1, omega1, phi1, psi1, r2, omega2, phi2, psi2, k, eta, ns):
+def ideal_possibility(D, r1, omega1, phi1, psi1, r2, omega2, phi2, psi2, k, eta, eta_pump, ns):
     if isinstance(ns, str):
         ns = [int(n) for n in ns.split(",")]
     num = main(
@@ -135,6 +138,7 @@ def ideal_possibility(D, r1, omega1, phi1, psi1, r2, omega2, phi2, psi2, k, eta,
         #
         k=k,
         eta=eta,
+        eta_pump=eta_pump,
         #
         measure=[(None, unit(n, D)) for n in ns],
     )
@@ -153,13 +157,14 @@ def ideal_possibility(D, r1, omega1, phi1, psi1, r2, omega2, phi2, psi2, k, eta,
         #
         k=k,
         eta=eta,
+        eta_pump=eta_pump,
         #
         measure=[(None, None) for n in ns],
     )
     return (num / den).real, den.real
 
 
-def parity(L, D, r1, omega1, phi1, psi1, r2, omega2, phi2, psi2, k, eta, d_out, pd, dc, masks):
+def parity(L, D, r1, omega1, phi1, psi1, r2, omega2, phi2, psi2, k, eta, eta_pump, d_out, pd, dc, masks):
     if isinstance(masks, str):
         if masks == "":
             masks = []
@@ -185,6 +190,7 @@ def parity(L, D, r1, omega1, phi1, psi1, r2, omega2, phi2, psi2, k, eta, d_out, 
         #
         k=k,
         eta=eta,
+        eta_pump=eta_pump,
         #
         measure=[(None, None if i in masks else device_parity) for i in range(L)],
     )
@@ -203,13 +209,14 @@ def parity(L, D, r1, omega1, phi1, psi1, r2, omega2, phi2, psi2, k, eta, d_out, 
         #
         k=k,
         eta=eta,
+        eta_pump=eta_pump,
         #
         measure=[(None, None) for _ in range(L)],
     )
     return (num / den).real, den.real
 
 
-def ideal_parity(L, D, r1, omega1, phi1, psi1, r2, omega2, phi2, psi2, k, eta, masks):
+def ideal_parity(L, D, r1, omega1, phi1, psi1, r2, omega2, phi2, psi2, k, eta, eta_pump, masks):
     if isinstance(masks, str):
         if masks == "":
             masks = []
@@ -233,6 +240,7 @@ def ideal_parity(L, D, r1, omega1, phi1, psi1, r2, omega2, phi2, psi2, k, eta, m
         #
         k=k,
         eta=eta,
+        eta_pump=eta_pump,
         #
         measure=[(None, None if i in masks else parity) for i in range(L)],
     )
@@ -251,13 +259,14 @@ def ideal_parity(L, D, r1, omega1, phi1, psi1, r2, omega2, phi2, psi2, k, eta, m
         #
         k=k,
         eta=eta,
+        eta_pump=eta_pump,
         #
         measure=[(None, None) for _ in range(L)],
     )
     return (num / den).real, den.real
 
 
-def count(L, D, r1, omega1, phi1, psi1, r2, omega2, phi2, psi2, k, eta, d_out, pd, dc, masks):
+def count(L, D, r1, omega1, phi1, psi1, r2, omega2, phi2, psi2, k, eta, eta_pump, d_out, pd, dc, masks):
     if isinstance(masks, str):
         if masks == "":
             masks = []
@@ -299,6 +308,7 @@ def count(L, D, r1, omega1, phi1, psi1, r2, omega2, phi2, psi2, k, eta, d_out, p
         #
         k=k,
         eta=eta,
+        eta_pump=eta_pump,
         #
         measure=[(None, counters[i]) for i in range(L)],
     )
@@ -317,13 +327,14 @@ def count(L, D, r1, omega1, phi1, psi1, r2, omega2, phi2, psi2, k, eta, d_out, p
         #
         k=k,
         eta=eta,
+        eta_pump=eta_pump,
         #
         measure=[(None, None) for _ in range(L)],
     )
     return (num / den).real, den.real
 
 
-def ideal_count(L, D, r1, omega1, phi1, psi1, r2, omega2, phi2, psi2, k, eta, masks):
+def ideal_count(L, D, r1, omega1, phi1, psi1, r2, omega2, phi2, psi2, k, eta, eta_pump, masks):
     if isinstance(masks, str):
         if masks == "":
             masks = []
@@ -363,6 +374,7 @@ def ideal_count(L, D, r1, omega1, phi1, psi1, r2, omega2, phi2, psi2, k, eta, ma
         #
         k=k,
         eta=eta,
+        eta_pump=eta_pump,
         #
         measure=[(None, counters[i]) for i in range(L)],
     )
@@ -381,13 +393,14 @@ def ideal_count(L, D, r1, omega1, phi1, psi1, r2, omega2, phi2, psi2, k, eta, ma
         #
         k=k,
         eta=eta,
+        eta_pump=eta_pump,
         #
         measure=[(None, None) for _ in range(L)],
     )
     return (num / den).real, den.real
 
 
-def distribution(L, D, r1, omega1, phi1, psi1, r2, omega2, phi2, psi2, k, eta, d_out, pd, dc, masks):
+def distribution(L, D, r1, omega1, phi1, psi1, r2, omega2, phi2, psi2, k, eta, eta_pump, d_out, pd, dc, masks):
     if isinstance(masks, str):
         if masks == "":
             masks = []
@@ -424,6 +437,7 @@ def distribution(L, D, r1, omega1, phi1, psi1, r2, omega2, phi2, psi2, k, eta, d
         #
         k=k,
         eta=eta,
+        eta_pump=eta_pump,
         #
         measure=[(None, counters[i]) for i in range(L)],
     ).blocks[["o"]].real
@@ -431,7 +445,7 @@ def distribution(L, D, r1, omega1, phi1, psi1, r2, omega2, phi2, psi2, k, eta, d
     return "\n".join("%.6f" % i for i in result)
 
 
-def ideal_distribution(L, D, r1, omega1, phi1, psi1, r2, omega2, phi2, psi2, k, eta, masks):
+def ideal_distribution(L, D, r1, omega1, phi1, psi1, r2, omega2, phi2, psi2, k, eta, eta_pump, masks):
     if isinstance(masks, str):
         if masks == "":
             masks = []
@@ -466,6 +480,7 @@ def ideal_distribution(L, D, r1, omega1, phi1, psi1, r2, omega2, phi2, psi2, k, 
         #
         k=k,
         eta=eta,
+        eta_pump=eta_pump,
         #
         measure=[(None, counters[i]) for i in range(L)],
     ).blocks[["o"]].real
@@ -491,6 +506,7 @@ io0 = gr.Interface(
         gr.Slider(-math.pi * 2, +math.pi * 2, math.pi / 2),
         #
         gr.Slider(1, 100, 1, step=1),
+        gr.Slider(0, 1, 1),
         gr.Slider(0, 1, 1),
         #
         gr.Slider(1, 100, 11, step=1),
@@ -520,6 +536,7 @@ io1 = gr.Interface(
         #
         gr.Slider(1, 100, 1, step=1),
         gr.Slider(0, 1, 1),
+        gr.Slider(0, 1, 1),
         #
         gr.Textbox("0, 0"),
     ],
@@ -544,6 +561,7 @@ io2 = gr.Interface(
         gr.Slider(-math.pi * 2, +math.pi * 2, math.pi / 2),
         #
         gr.Slider(1, 100, 1, step=1),
+        gr.Slider(0, 1, 1),
         gr.Slider(0, 1, 1),
         #
         gr.Slider(1, 100, 11, step=1),
@@ -574,6 +592,7 @@ io3 = gr.Interface(
         #
         gr.Slider(1, 100, 1, step=1),
         gr.Slider(0, 1, 1),
+        gr.Slider(0, 1, 1),
         #
         gr.Textbox(""),
     ],
@@ -598,6 +617,7 @@ io4 = gr.Interface(
         gr.Slider(-math.pi * 2, +math.pi * 2, math.pi / 2),
         #
         gr.Slider(1, 100, 1, step=1),
+        gr.Slider(0, 1, 1),
         gr.Slider(0, 1, 1),
         #
         gr.Slider(1, 100, 11, step=1),
@@ -628,6 +648,7 @@ io5 = gr.Interface(
         #
         gr.Slider(1, 100, 1, step=1),
         gr.Slider(0, 1, 1),
+        gr.Slider(0, 1, 1),
         #
         gr.Textbox(""),
     ],
@@ -652,6 +673,7 @@ io6 = gr.Interface(
         gr.Slider(-math.pi * 2, +math.pi * 2, math.pi / 2),
         #
         gr.Slider(1, 100, 1, step=1),
+        gr.Slider(0, 1, 1),
         gr.Slider(0, 1, 1),
         #
         gr.Slider(1, 100, 11, step=1),
@@ -681,6 +703,7 @@ io7 = gr.Interface(
         gr.Slider(-math.pi * 2, +math.pi * 2, math.pi / 2),
         #
         gr.Slider(1, 100, 1, step=1),
+        gr.Slider(0, 1, 1),
         gr.Slider(0, 1, 1),
         #
         gr.Textbox(""),
